@@ -405,6 +405,7 @@ impl App {
         if let Some(id)=chosen{self.quota.config.selected=id;self.quota.config.save();self.show_page(6);}
     }
     pub(crate) fn page_quota(&mut self,c:&Card){
+        if self.claude_tracker_chip(c){self.page_claude_tracker(c);return;}
         if c.hit(303.0,8.0,32.0,21.0,"quota-refresh").on_hover_text("刷新额度").clicked(){self.pending.push(Cmd::QuotaRefresh);}
         c.text(319.0,23.0,if self.quota.busy.is_empty(){"刷新"}else{"更新中"},10.5,W::Regular,theme::GRAY,H::Center);
         let Some(selected)=self.quota.config.selected_index() else{
@@ -653,6 +654,9 @@ impl App {
         if !self.quota.connect_open&&!self.quota.note.is_empty(){ui.add_space(8.0);ui.label(egui::RichText::new(&self.quota.note).size(12.0).color(ui.visuals().weak_text_color()));}
         self.quota_connect_window(ui.ctx());
         if before!=self.quota.config{self.quota.config.save();}
+        let tracker_before=serde_json::to_string(&self.claude_tracker).unwrap_or_default();
+        self.claude_tracker_settings(ui);
+        if tracker_before!=serde_json::to_string(&self.claude_tracker).unwrap_or_default(){self.claude_tracker.save();}
     }
     fn quota_connect_window(&mut self,ctx:&egui::Context){
         if !self.quota.connect_open{return;}let mut open=true;

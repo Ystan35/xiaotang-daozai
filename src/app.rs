@@ -791,6 +791,9 @@ pub struct App {
     /// v0.5.6：日历（CalDAV）配置、未来 24 小时事件与设置表单。
     pub(crate) calendar: CalendarState,
     pub(crate) quota: crate::quota_ui::State,
+    /// Claude 多账号轮换（手动标记恢复时间）。
+    pub(crate) claude_tracker: crate::claude_tracker::Tracker,
+    pub(crate) claude_tracker_checked: f64,
     /// 天气页的当前数据与后台拉取状态。
     pub(crate) weather: crate::weather::State,
     pub(crate) updates: crate::updates::State,
@@ -915,6 +918,7 @@ impl App {
             mail_lines_cache: Vec::new(),
             calendar: CalendarState::load(),
             quota: crate::quota_ui::State::load(),
+            claude_tracker: crate::claude_tracker::Tracker::load(), claude_tracker_checked: f64::NEG_INFINITY,
             weather,
             updates: Default::default(),
             resident: Default::default(), resident_power:(None,false), auto_theme_checked: f64::NEG_INFINITY,
@@ -3002,6 +3006,7 @@ impl App {
         self.remind_t.step(dt);
         self.sit_t.target = if self.settings.sit_remind { 1.0 } else { 0.0 };
         self.sit_t.step(dt);
+        self.claude_tracker_tick();
         if self.t-self.auto_theme_checked>=30.0 {
             self.auto_theme_checked=self.t;
             self.run_auto_theme(chrono::Local::now());

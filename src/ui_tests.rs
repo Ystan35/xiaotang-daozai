@@ -8404,3 +8404,37 @@ fn auto_theme_switches_once_per_boundary_and_persists(){
     let plan=h.app.auto_theme_plan(at(14,12,0)).unwrap();
     assert_eq!(plan.source,crate::auto_theme::Source::Sun);assert!(!plan.dark);
 }
+
+#[test]
+fn claude_tracker_marks_adjusts_and_alerts_on_the_quota_page(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.app.settings.pet=false;
+    let text=|h:&H,label:&str|h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()==label));
+    let press=|h:&mut H,label:&str|{h.click_text(label);h.frame(vec![]);};
+    h.app.page=crate::app::QUOTA_PAGE;h.hover(Pos2::new(WIN_W/2.0,15.0),1.5);
+    assert!(!text(&h,"Claude 账号"),"默认关闭时不显示入口");
+    h.app.claude_tracker.enabled=true;
+    let now=chrono::Utc::now().timestamp();
+    let main=h.app.claude_tracker.add("主号",now).unwrap();h.app.claude_tracker.add("学校号",now).unwrap();
+    for _ in 0..5{h.frame(vec![]);}
+    assert!(text(&h,"Claude 账号")&&text(&h,"主号")&&text(&h,"学校号"),"没有 AI 账号时直接显示轮换列表");
+    press(&mut h,"用完");
+    let reset=h.app.claude_tracker.find(&main).unwrap().reset_at.expect("标记为用完");
+    assert_eq!(h.app.claude_tracker.editing.as_deref(),Some(main.as_str()));
+    press(&mut h,"+1h");
+    assert_eq!(h.app.claude_tracker.find(&main).unwrap().reset_at,Some(reset+3600));
+    press(&mut h,"完成");
+    assert!(h.app.claude_tracker.editing.is_none()&&text(&h,"调整"));
+    let saved=crate::claude_tracker::Tracker::load();
+    assert_eq!(saved.find(&main).unwrap().reset_at,Some(reset+3600),"标记保存在本机");
+    // 到点后恢复可用并提醒一次。
+    h.app.claude_tracker.accounts[0].reset_at=Some(now-1);h.app.claude_tracker_checked=f64::NEG_INFINITY;
+    h.frame(vec![]);
+    assert!(h.app.claude_tracker.find(&main).unwrap().reset_at.is_none());
+    assert!(h.app.history.iter().any(|a|a.title=="Claude 账号可用"&&a.body.contains("主号")));
+    // 设置页：开关与账号列表可渲染，关闭后入口消失。
+    h.t+=0.1;let out=h.ctx.run(egui::RawInput{time:Some(h.t),screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(780.0,850.0))),..Default::default()},|ctx|{egui::CentralPanel::default().show(ctx,|ui|h.app.quota_settings(ui));});
+    let settings_text=|label:&str|out.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().contains(label)));
+    assert!(settings_text("Claude 账号轮换")&&settings_text("添加 Claude 账号")&&settings_text("默认浏览器"));
+    h.app.claude_tracker.enabled=false;for _ in 0..5{h.frame(vec![]);}
+    assert!(!text(&h,"Claude 账号")&&text(&h,"还没有添加 AI 账号"));
+}
