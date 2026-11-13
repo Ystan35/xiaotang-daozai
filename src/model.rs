@@ -260,11 +260,18 @@ pub struct Settings {
     pub render_compat: bool,
     /// 自动切换到兼容渲染的原因；手动开启时为空。
     pub render_compat_reason: String,
+    /// 系统深浅色自动切换：关闭 / 跟随日出日落 / 自定义时间。
+    pub auto_theme: crate::auto_theme::Mode,
+    /// 自定义时间（一天中的分钟数）：几点切浅色、几点切深色；日出日落缺坐标时也用它。
+    pub auto_theme_light: u32,
+    pub auto_theme_dark: u32,
+    /// 已处理的最近切换点（Unix 秒）；同一切换点只改一次，用户之后手动改回不再覆盖。
+    pub auto_theme_last: i64,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { display_id: String::new(), skin: Skin::Classic, island_shape: IslandShape::Notch, glass_blur: true, island_size: 100, island_offset: 0, dock: Dock::Top, settings_theme: Default::default(), pet: true, minimal: false, browser_minimal: false, avoid_browsers: true, avoid_apps: Vec::new(), visible_pages: [true; 9], page_order: [0,1,2,3,4,5,6,7,8], show_battery: true, clock_12h: false, clock_period: 0, resident_order: Vec::new(), system_hud: true, bluetooth_notifications: true, read_notifications:false, wechat_notifications:false, wecom_notifications:false, feishu_notifications:false, dingtalk_notifications:false, wechat_tray_open:false, qq_only:false, notification_preview:false, notifications: true, sound: false, lyrics_enabled:true, island_lyrics:false, lyric_delay_ms:-350, hide_fullscreen: true, avoid_top_bar: true, focus_minutes: 25, rest_minutes: 5, water_minutes: 45, serving_ml: 250, water_start: 9, water_end: 22, sit_remind: true, sit_minutes: 60, lunch_rest: true, lunch_start: 720, lunch_end: 810, mail_enabled: true, mail_sync_operations:false, mail_code: true, mail_code_hide_seconds:60, mail_interval: 120, mail_ics: 15, ignored_mail_events: Vec::new(), calendar_prompt: true, calendar_auto_sync: true, clipboard_history: true, weather_city: String::new(), weather_position: None, weather_saved: Vec::new(), render_compat: false, render_compat_reason: String::new() }
+        Self { display_id: String::new(), skin: Skin::Classic, island_shape: IslandShape::Notch, glass_blur: true, island_size: 100, island_offset: 0, dock: Dock::Top, settings_theme: Default::default(), pet: true, minimal: false, browser_minimal: false, avoid_browsers: true, avoid_apps: Vec::new(), visible_pages: [true; 9], page_order: [0,1,2,3,4,5,6,7,8], show_battery: true, clock_12h: false, clock_period: 0, resident_order: Vec::new(), system_hud: true, bluetooth_notifications: true, read_notifications:false, wechat_notifications:false, wecom_notifications:false, feishu_notifications:false, dingtalk_notifications:false, wechat_tray_open:false, qq_only:false, notification_preview:false, notifications: true, sound: false, lyrics_enabled:true, island_lyrics:false, lyric_delay_ms:-350, hide_fullscreen: true, avoid_top_bar: true, focus_minutes: 25, rest_minutes: 5, water_minutes: 45, serving_ml: 250, water_start: 9, water_end: 22, sit_remind: true, sit_minutes: 60, lunch_rest: true, lunch_start: 720, lunch_end: 810, mail_enabled: true, mail_sync_operations:false, mail_code: true, mail_code_hide_seconds:60, mail_interval: 120, mail_ics: 15, ignored_mail_events: Vec::new(), calendar_prompt: true, calendar_auto_sync: true, clipboard_history: true, weather_city: String::new(), weather_position: None, weather_saved: Vec::new(), render_compat: false, render_compat_reason: String::new(), auto_theme: crate::auto_theme::Mode::Off, auto_theme_light: crate::auto_theme::DEFAULT_LIGHT, auto_theme_dark: crate::auto_theme::DEFAULT_DARK, auto_theme_last: 0 }
     }
 }
 
@@ -378,6 +385,10 @@ impl Settings {
                 "weather_saved" => s.weather_saved=serde_json::from_str::<Vec<crate::weather::Position>>(&v).unwrap_or_default().into_iter().filter(|p|p.valid()).collect(),
                 "render_compat" => s.render_compat = v == "1",
                 "render_compat_reason" => s.render_compat_reason = v.chars().filter(|c| !c.is_control()).take(200).collect(),
+                "auto_theme" => s.auto_theme = crate::auto_theme::Mode::parse(&v),
+                "auto_theme_light" => s.auto_theme_light = v.parse::<u32>().ok().filter(|m|*m<1440).unwrap_or(crate::auto_theme::DEFAULT_LIGHT),
+                "auto_theme_dark" => s.auto_theme_dark = v.parse::<u32>().ok().filter(|m|*m<1440).unwrap_or(crate::auto_theme::DEFAULT_DARK),
+                "auto_theme_last" => s.auto_theme_last = v.parse::<i64>().unwrap_or(0),
                 _ => {}
             }
         }
@@ -456,6 +467,10 @@ impl Settings {
                 ("weather_saved".into(), serde_json::to_string(&self.weather_saved).unwrap()),
                 ("render_compat".into(), (self.render_compat as u8).to_string()),
                 ("render_compat_reason".into(), self.render_compat_reason.clone()),
+                ("auto_theme".into(), self.auto_theme.key().into()),
+                ("auto_theme_light".into(), self.auto_theme_light.to_string()),
+                ("auto_theme_dark".into(), self.auto_theme_dark.to_string()),
+                ("auto_theme_last".into(), self.auto_theme_last.to_string()),
             ],
         );
     }

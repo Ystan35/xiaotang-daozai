@@ -1514,6 +1514,52 @@ impl App {
                             ui.separator();
                             setting_row(ui,"全屏时隐藏","游戏、视频和演示全屏时隐藏",&mut self.settings.hide_fullscreen);
                         });
+                        settings_label(ui,"系统深浅色");
+                        settings_card(ui,|ui|{
+                            use crate::auto_theme::{Mode,Source};
+                            let before=self.settings.auto_theme;
+                            settings_control_row_right(ui,"自动切换",|ui|{
+                                settings_segmented(ui,&mut self.settings.auto_theme,&[(Mode::Off,"关闭"),(Mode::Sun,"日出日落"),(Mode::Custom,"自定义")],64.0);
+                            });
+                            if before!=self.settings.auto_theme {
+                                // 刚开启时立即按当前时段切换一次。
+                                self.settings.auto_theme_last=0;self.auto_theme_checked=f64::NEG_INFINITY;
+                            }
+                            let now=chrono::Local::now();
+                            let plan=self.auto_theme_plan(now);
+                            if self.settings.auto_theme!=Mode::Off {
+                                if plan.is_none_or(|p|p.source==Source::Custom) {
+                                    settings_control_row(ui,"浅色 / 深色",80.0,|ui|{
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
+                                            ui.allocate_ui_with_layout(egui::vec2(252.0,30.0),egui::Layout::left_to_right(egui::Align::Center),|ui|{
+                                                time_stepper(ui,&mut self.settings.auto_theme_light,"auto-theme-light");
+                                                ui.label("/");
+                                                time_stepper(ui,&mut self.settings.auto_theme_dark,"auto-theme-dark");
+                                            });
+                                        }).response
+                                    });
+                                }
+                                let place=self.settings.weather_position.as_ref().or_else(||self.weather.snapshot.as_ref().and_then(|s|s.position.as_ref())).map(|p|p.label.clone());
+                                let mut hint=match (self.settings.auto_theme,plan.map(|p|p.source),place) {
+                                    (Mode::Sun,Some(Source::Sun),Some(place))=>format!("按{place}的日出日落切换，本机计算、不联网。"),
+                                    (Mode::Sun,_,_)=>"还没有天气城市，或当地正值极昼极夜，暂按上面的时间切换。".to_string(),
+                                    _=>"按上面的时间切换浅色与深色。".to_string(),
+                                };
+                                match plan.and_then(|p|p.next) {
+                                    Some((at,dark))=>{
+                                        use chrono::TimeZone;
+                                        if let Some(at)=chrono::Local.timestamp_opt(at,0).single() {
+                                            let day=if at.date_naive()==now.date_naive(){"今天"}else{"明天"};
+                                            hint.push_str(&format!("下次：{day} {} 切到{}。",at.format("%H:%M"),if dark{"深色"}else{"浅色"}));
+                                        }
+                                    }
+                                    None if plan.is_none()=>hint.push_str("浅色和深色时间相同，不会切换。"),
+                                    None=>{}
+                                }
+                                settings_hint(ui,&hint);
+                                settings_hint(ui,"改的是 Windows 应用与任务栏的深浅色，岛的皮肤不变；切换后手动改回，会保持到下一个切换点。");
+                            }
+                        });
                     }
                     1=>{
                         settings_label(ui,"歌词");

@@ -796,6 +796,8 @@ pub struct App {
     pub(crate) updates: crate::updates::State,
     pub(crate) resident: bar::Motion,
     pub(crate) resident_power: (Option<u8>,bool),
+    /// 上次检查系统深浅色切换点的时刻（`t`）；负值表示下一帧立即检查。
+    pub(crate) auto_theme_checked: f64,
 }
 
 impl App {
@@ -915,8 +917,29 @@ impl App {
             quota: crate::quota_ui::State::load(),
             weather,
             updates: Default::default(),
-            resident: Default::default(), resident_power:(None,false),
+            resident: Default::default(), resident_power:(None,false), auto_theme_checked: f64::NEG_INFINITY,
         }
+    }
+
+    /// 天气城市优先，其次自动定位得到的坐标。
+    pub(crate) fn auto_theme_position(&self)->Option<(f64,f64)> {
+        self.settings.weather_position.as_ref().or_else(||self.weather.snapshot.as_ref().and_then(|s|s.position.as_ref()))
+            .filter(|p|p.valid()).map(|p|(p.lat,p.lon))
+    }
+
+    pub(crate) fn auto_theme_plan<Tz:chrono::TimeZone>(&self,now:chrono::DateTime<Tz>)->Option<crate::auto_theme::Plan> {
+        crate::auto_theme::plan(self.settings.auto_theme,self.auto_theme_position(),self.settings.auto_theme_light,self.settings.auto_theme_dark,now)
+    }
+
+    /// 越过新的切换点时改一次系统深浅色；返回是否切换。
+    pub(crate) fn run_auto_theme<Tz:chrono::TimeZone>(&mut self,now:chrono::DateTime<Tz>)->bool {
+        let Some(plan)=self.auto_theme_plan(now) else{return false;};
+        if plan.since<=self.settings.auto_theme_last {return false;}
+        self.settings.auto_theme_last=plan.since;
+        self.settings.save();
+        crate::auto_theme::apply(plan.dark);
+        self.say(if plan.dark {"已切换为深色模式"} else {"已切换为浅色模式"});
+        true
     }
 
     pub fn say(&mut self, msg: impl Into<String>) {
@@ -2979,6 +3002,10 @@ impl App {
         self.remind_t.step(dt);
         self.sit_t.target = if self.settings.sit_remind { 1.0 } else { 0.0 };
         self.sit_t.step(dt);
+        if self.t-self.auto_theme_checked>=30.0 {
+            self.auto_theme_checked=self.t;
+            self.run_auto_theme(chrono::Local::now());
+        }
         // 剪贴板记录开关：关闭时同时清掉未固定的记录。
         if self.clipboard.is_enabled() != self.clipboard_active() {
             self.clipboard.set_enabled(self.clipboard_active());

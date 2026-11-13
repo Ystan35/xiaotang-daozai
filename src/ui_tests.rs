@@ -8380,3 +8380,27 @@ fn every_module_settings_tab_maps_to_its_page(){
     }
     pages.sort();assert_eq!(pages,(0..crate::app::PAGE_NAMES.len()).collect::<Vec<_>>(),"每个功能页面各有一个设置分页");
 }
+
+#[test]
+fn auto_theme_switches_once_per_boundary_and_persists(){
+    use chrono::TimeZone;
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
+    let tz=chrono::FixedOffset::east_opt(8*3600).unwrap();
+    let at=|d,hh,mm|tz.with_ymd_and_hms(2026,11,d,hh,mm,0).unwrap();
+    assert!(!h.app.run_auto_theme(at(13,20,0)),"默认关闭，不改系统主题");
+    h.app.settings.auto_theme=crate::auto_theme::Mode::Custom;
+    assert!(h.app.run_auto_theme(at(13,20,0)),"开启后立即按当前时段切换");
+    assert!(!h.app.run_auto_theme(at(13,22,0)),"同一切换点只改一次，用户手动改回不被覆盖");
+    let saved=crate::model::Settings::load();
+    assert_eq!(saved.auto_theme,crate::auto_theme::Mode::Custom);
+    assert_eq!(saved.auto_theme_last,at(13,19,0).timestamp());
+    assert!(!h.app.run_auto_theme(at(14,6,59)));
+    assert!(h.app.run_auto_theme(at(14,7,0)),"越过下一个切换点再切换");
+    h.app.settings.auto_theme_light=8*60;h.app.settings.auto_theme_dark=17*60;h.app.settings.save();
+    let saved=crate::model::Settings::load();
+    assert_eq!((saved.auto_theme_light,saved.auto_theme_dark),(8*60,17*60));
+    h.app.settings.weather_position=Some(crate::weather::Position{lat:39.9042,lon:116.4074,label:"北京".into(),region:String::new()});
+    h.app.settings.auto_theme=crate::auto_theme::Mode::Sun;
+    let plan=h.app.auto_theme_plan(at(14,12,0)).unwrap();
+    assert_eq!(plan.source,crate::auto_theme::Source::Sun);assert!(!plan.dark);
+}
