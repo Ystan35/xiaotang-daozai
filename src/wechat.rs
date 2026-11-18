@@ -28,11 +28,11 @@ fn open_wechat(unread:Unread,paths:&[String],allow_tray:bool)->Result<(),OpenErr
             else if window_pid(window)==unread.pid && usable_main_frame(window,unread.source) && matches(window,paths){Some(window)}
             else{account_main_window(unread.pid,unread.source,paths)};
         if let Some(target)=target{
-            if IsIconic(target).as_bool(){ShowWindowAsync(target,SW_RESTORE).ok().map_err(|_|OpenError::Failed("请从任务栏打开微信".into()))?;}
+            if IsIconic(target).as_bool(){ShowWindowAsync(target,SW_RESTORE).ok().map_err(|_|OpenError::Failed("Open WeChat from the taskbar".into()))?;}
             if SetForegroundWindow(target).as_bool(){return Ok(());}
         }
     }
-    if !allow_tray{return Err(OpenError::Failed("请从任务栏或托盘打开微信".into()));}
+    if !allow_tray{return Err(OpenError::Failed("Open WeChat from the taskbar or tray".into()));}
     wechat_in_tray(unread).map_err(OpenError::Failed)?;
     open_wechat_from_tray(unread).map_err(OpenError::Failed)
 }
@@ -93,10 +93,10 @@ impl TrayLog {
     fn step(&mut self,line:impl Into<String>){self.0.push(line.into());}
     /// 写入日志并返回给用户看的提示（带错误码，便于反馈）。
     fn fail(&mut self,code:&str,reason:&str)->String{
-        self.step(format!("失败 {code}：{reason}"));
+        self.step(format!("Failed {code}: {reason}"));
         let directory=crate::model::config_dir().join("diagnostics");
         let saved=std::fs::create_dir_all(&directory).and_then(|_|std::fs::write(directory.join("wechat-tray.log"),self.0.join("\n")+"\n")).is_ok();
-        if saved {format!("未能唤起微信（{code}），请从托盘打开；诊断已记录")} else {format!("未能唤起微信（{code}），请从托盘打开")}
+        if saved {format!("Couldn't bring up WeChat ({code}); open it from the tray. Diagnostics logged")} else {format!("Couldn't bring up WeChat ({code}); open it from the tray")}
     }
 }
 
@@ -163,15 +163,15 @@ unsafe fn account_main_window(pid:u32,source:crate::app::Messenger,paths:&[Strin
 
 /// 该账号缩在托盘（没有可见主窗口，但有托盘图标）时返回 Ok；否则返回给用户的提示，并记录诊断。
 pub fn wechat_in_tray(unread:crate::app::Unread)->Result<(),String>{
-    if unread.source!=crate::app::Messenger::Wechat {return Err("请从任务栏或托盘打开微信".into());}
+    if unread.source!=crate::app::Messenger::Wechat {return Err("Open WeChat from the taskbar or tray".into());}
     let paths=client_paths(unread.source);
     let mut log=TrayLog::new(unread);
     unsafe{
         // 双开时可能查不到本账号图标的位置，此时由唤起流程用排除法定位，这里只要求找到它的托盘窗口。
-        let Some(account)=tray_account(unread.pid,&paths,&mut log) else {return Err(log.fail("T1","未找到该账号的微信托盘窗口"));};
+        let Some(account)=tray_account(unread.pid,&paths,&mut log) else {return Err(log.fail("T1","No WeChat tray window for this account"));};
         let pid=account.pid;
         if let Some(main)=visible_main_window_of(pid,unread.source,&paths).or_else(||account_main_window(unread.pid,unread.source,&paths)){
-            return Err(log.fail("T0",&format!("微信主窗口仍可见（{} {:#x}），但未能切到前台",class_name(main),main.0 as usize)));
+            return Err(log.fail("T0",&format!("WeChat main window is visible ({} {:#x}) but couldn't be brought to front",class_name(main),main.0 as usize)));
         }
     }
     Ok(())
@@ -260,7 +260,7 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
     unsafe {
         let _=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let _=CoInitializeEx(None,COINIT_MULTITHREADED);
-        let Some(account)=tray_account(unread.pid,&paths,&mut log) else {return Err(log.fail("T1","未找到该账号的微信托盘窗口"));};
+        let Some(account)=tray_account(unread.pid,&paths,&mut log) else {return Err(log.fail("T1","No WeChat tray window for this account"));};
         let Ok(ui)=CoCreateInstance::<_,IUIAutomation>(&CUIAutomation8,None,CLSCTX_INPROC_SERVER) else {return Err(log.fail("T2","无法创建系统无障碍接口"));};
         // 新系统的任务栏较复杂，800ms 可能来不及遍历完。
         if let Ok(timed)=ui.cast::<IUIAutomation2>(){let _=timed.SetConnectionTimeout(2500);let _=timed.SetTransactionTimeout(2500);}
@@ -292,7 +292,7 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
             }
             match &best {
                 Some((_,item))=>log.step(format!("命中按钮：{}",describe_element(item))),
-                None=>log.step(format!("  {} {:#x}：扫描 {count} 个控件用时 {}ms，覆盖图标中心的：{}",class_name(window),window.0 as usize,started.elapsed().as_millis(),if covering.is_empty(){"无".into()}else{covering.join("；")})),
+                None=>log.step(format!("  {} {:#x}：扫描 {count} 个控件用时 {}ms，覆盖图标中心的：{}",class_name(window),window.0 as usize,started.elapsed().as_millis(),if covering.is_empty(){"无".into()}else{covering.join("; ")})),
             }
             best.map(|(_,item)|item)
         };
@@ -311,7 +311,7 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
             let center=windows::Win32::Foundation::POINT{x:(icon.left+icon.right)/2,y:(icon.top+icon.bottom)/2};
             let mut find=Find{pid:window_pid(taskbar),taskbar,center,found:Vec::new()};
             let _=EnumWindows(Some(visit),LPARAM((&mut find as *mut Find) as isize));
-            log.step(format!("资源管理器覆盖该点的其他窗口：{}",if find.found.is_empty(){"无".into()}else{find.found.iter().map(|h|format!("{} {:#x}",class_name(*h),h.0 as usize)).collect::<Vec<_>>().join("，")}));
+            log.step(format!("资源管理器覆盖该点的其他窗口：{}",if find.found.is_empty(){"无".into()}else{find.found.iter().map(|h|format!("{} {:#x}",class_name(*h),h.0 as usize)).collect::<Vec<_>>().join(", ")}));
             find.found.into_iter().take(4).find_map(|window|button_at(window,icon,log))
         };
         let invoke=|element:&IUIAutomationElement|->bool{
@@ -324,12 +324,12 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
                 if foreground_main_pid(unread.source,&paths)==Some(pid){return Ok(());}
                 std::thread::sleep(Duration::from_millis(80));
             }
-            Err(log.fail("T5","未确认目标账号的主窗口已到前台"))
+            Err(log.fail("T5","Couldn't confirm the account's main window came to front"))
         };
         // 新版 Win11 与旧式（Windows 10 / 早期 Win11）的折叠区窗口。
         let overflow_open=||[w!("TopLevelWindowForOverflowXamlIsland"),w!("NotifyIconOverflowWindow")].into_iter()
             .find_map(|class|FindWindowW(class,PCWSTR::null()).ok().filter(|h|IsWindowVisible(*h).as_bool()));
-        let Ok(taskbar)=FindWindowW(w!("Shell_TrayWnd"),PCWSTR::null()) else {return Err(log.fail("T3","找不到任务栏"));};
+        let Ok(taskbar)=FindWindowW(w!("Shell_TrayWnd"),PCWSTR::null()) else {return Err(log.fail("T3","Taskbar not found"));};
         // 任务栏自动隐藏时缩在屏幕外，无障碍树里没有托盘按钮：先让它弹出来（与鼠标移到屏幕边缘相同），
         // 微信切到前台后任务栏会自己缩回去。
         if taskbar_autohide() {
@@ -390,7 +390,7 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
             let pressed=target.as_ref().is_some_and(invoke);
             if !pressed{
                 if overflow_open().is_some(){if let Some(button)=opened{let _=invoke(&button);}}
-                return Err(log.fail("T1","无法唯一确认该账号的托盘按钮，请手动打开微信"));
+                return Err(log.fail("T1","Can't identify this account's tray button; open WeChat manually"));
             }
             return confirmed(account.pid,&mut log);
         };
@@ -414,9 +414,9 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
             chevron=button;from_chevron=true;
         } else {
             // 图标可能仍报告收起时的位置；两种识别路径都通过系统折叠按钮展开后重新定位。
-            let Some(element)=tray_overflow_button(&ui,taskbar) else {return Err(log.fail("T3","任务栏上找不到微信托盘按钮或隐藏图标按钮"));};
+            let Some(element)=tray_overflow_button(&ui,taskbar) else {return Err(log.fail("T3","No WeChat tray button or hidden-icons button on the taskbar"));};
             log.step(format!("任务栏上未命中；折叠按钮：{}",describe_element(&element)));
-            if !was_open && !invoke(&element){return Err(log.fail("T5","折叠按钮无法按下"));}
+            if !was_open && !invoke(&element){return Err(log.fail("T5","Overflow button can't be pressed"));}
             chevron=element;from_chevron=false;
         }
         let started=Instant::now();
@@ -434,7 +434,7 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
         if pressed {return confirmed(account.pid,&mut log);}
         // 没按成：把展开的折叠区收回去，不留在屏幕上。
         if !was_open && overflow_open().is_some(){let _=invoke(&chevron);}
-        Err(log.fail(if started.elapsed()>=Duration::from_millis(1500){"T4"}else{"T5"},"折叠区里找不到或按不下微信托盘按钮"))
+        Err(log.fail(if started.elapsed()>=Duration::from_millis(1500){"T4"}else{"T5"},"WeChat tray button not found or not pressable in the overflow area"))
     }
 }
 
@@ -511,7 +511,7 @@ fn client_trace(source:crate::messenger::Messenger,line:String){
 /// 窗口的简短描述：句柄、类名、可见 / 最小化。不读标题。
 fn describe(hwnd:HWND)->String{
     if hwnd.0.is_null(){return "无".into();}
-    unsafe{format!("{:#x} {} {}{}",hwnd.0 as usize,class_name(hwnd),if IsWindowVisible(hwnd).as_bool(){"可见"}else{"隐藏"},if IsIconic(hwnd).as_bool(){"·最小化"}else{""})}
+    unsafe{format!("{:#x} {} {}{}",hwnd.0 as usize,class_name(hwnd),if IsWindowVisible(hwnd).as_bool(){"可见"}else{"Hide"},if IsIconic(hwnd).as_bool(){"·最小化"}else{""})}
 }
 
 /// 微信提醒事件记录：只保留最近 300 条，写到 diagnostics/wechat-events.log；不记标题和聊天内容。
@@ -544,7 +544,7 @@ impl Listener {
         // 每次启动监听都记一条：日志里没有这一行，就说明监听从未启动。
         let elevated=if process_elevated(){"是"}else{"否"};
         match &result {
-            Ok(listener)=>trace(format!("监听已启动 · 岛仔管理员权限={elevated} · 微信安装路径：{}",listener.state.borrow().paths.iter().filter(|p|!p.starts_with('*')).cloned().collect::<Vec<_>>().join("，"))),
+            Ok(listener)=>trace(format!("监听已启动 · 岛仔管理员权限={elevated} · 微信安装路径：{}",listener.state.borrow().paths.iter().filter(|p|!p.starts_with('*')).cloned().collect::<Vec<_>>().join(", "))),
             Err(error)=>trace(format!("监听启动失败：{error} · 岛仔管理员权限={elevated}")),
         }
         result
@@ -552,20 +552,20 @@ impl Listener {
     pub(crate) fn for_client(source:crate::messenger::Messenger,ctx:eframe::egui::Context)->Result<Self,String>{Self::start(ctx,source)}
     fn start(ctx: eframe::egui::Context,source:crate::messenger::Messenger) -> Result<Self,String> {
         let paths=client_paths(source);
-        if paths.is_empty(){return Err(format!("未找到{}安装路径，请安装后重新开启提醒",source.name()));}
+        if paths.is_empty(){return Err(format!("{} install path not found; install it and turn alerts on again",source.name()));}
         unsafe {
             let message=RegisterWindowMessageW(w!("SHELLHOOK"));
-            if message==0{return Err(format!("无法注册{}提醒事件",source.name()));}
+            if message==0{return Err(format!("Can't register {} alert events",source.name()));}
             let taskbar_created=RegisterWindowMessageW(w!("TaskbarCreated"));
-            let hwnd=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("DaozaiWechatListener"),WS_POPUP,0,0,0,0,None,None,None,None).map_err(|_|format!("无法创建{}监听窗口",source.name()))?;
+            let hwnd=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("DaozaiWechatListener"),WS_POPUP,0,0,0,0,None,None,None,None).map_err(|_|format!("Can't create the {} listener window",source.name()))?;
             // 岛仔以管理员身份运行时，系统会拦下资源管理器发来的窗口事件；显式允许这两条消息。
             for allowed in [message,taskbar_created] {
                 let _=ChangeWindowMessageFilterEx(hwnd,allowed,MSGFLT_ALLOW,None);
             }
             let state=Box::new(RefCell::new(State{message,taskbar_created,source,registered:true,paths,burst:Vec::new(),pending:Vec::new(),ctx}));
             let listener=Self{hwnd,state};
-            SetWindowSubclass(hwnd,Some(subclass),SUBCLASS_ID,(&*listener.state as *const RefCell<State>) as usize).ok().map_err(|_|format!("无法接入{}提醒事件",source.name()))?;
-            RegisterShellHookWindow(hwnd).ok().map_err(|_|format!("无法监听{}任务栏提醒",source.name()))?;
+            SetWindowSubclass(hwnd,Some(subclass),SUBCLASS_ID,(&*listener.state as *const RefCell<State>) as usize).ok().map_err(|_|format!("Can't hook {} alert events",source.name()))?;
+            RegisterShellHookWindow(hwnd).ok().map_err(|_|format!("Can't watch {} taskbar alerts",source.name()))?;
             Ok(listener)
         }
     }

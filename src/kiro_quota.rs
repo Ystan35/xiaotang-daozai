@@ -12,23 +12,23 @@ fn endpoint(region:&str)->Result<&'static str,String>{
     match region{
         "us-east-1"=>Ok("https://codewhisperer.us-east-1.amazonaws.com/"),
         "eu-central-1"=>Ok("https://q.eu-central-1.amazonaws.com/"),
-        _=>Err("暂不支持此 Kiro 区域，请使用美国东部或欧洲中部区域的登录".into()),
+        _=>Err("This Kiro region isn't supported; use a US East or EU Central sign-in".into()),
     }
 }
 fn login(root:&Value)->Result<Login,String>{
-    for field in ["profileArn","region"]{if root.get(field).is_some_and(|v|!v.is_null()&&!v.is_string()){return Err("Kiro 登录区域或 profileArn 字段无效".into());}}
-    let token=root["accessToken"].as_str().filter(|s|!s.is_empty()&&s.len()<=65536&&s.is_ascii()&&!s.bytes().any(|b|b<=32||b==127)).ok_or("未找到有效的 Kiro 登录凭据，请先在 Kiro 中登录")?.to_owned();
+    for field in ["profileArn","region"]{if root.get(field).is_some_and(|v|!v.is_null()&&!v.is_string()){return Err("Invalid Kiro region or profileArn".into());}}
+    let token=root["accessToken"].as_str().filter(|s|!s.is_empty()&&s.len()<=65536&&s.is_ascii()&&!s.bytes().any(|b|b<=32||b==127)).ok_or("No valid Kiro credentials; sign in to Kiro first")?.to_owned();
     let profile_arn=root["profileArn"].as_str().map(str::trim).filter(|s|!s.is_empty()).map(str::to_owned);
     let arn_region=if let Some(arn)=profile_arn.as_deref(){
         let parts=arn.splitn(6,':').collect::<Vec<_>>();
-        if parts.len()!=6||parts[0]!="arn"||parts[1]!="aws"||!matches!(parts[2],"codewhisperer"|"qdeveloper")||parts[3].is_empty(){return Err("Kiro 登录中的 profileArn 无效".into());}
+        if parts.len()!=6||parts[0]!="arn"||parts[1]!="aws"||!matches!(parts[2],"codewhisperer"|"qdeveloper")||parts[3].is_empty(){return Err("Invalid profileArn in Kiro sign-in".into());}
         Some(parts[3])
     }else{None};
     let explicit=root["region"].as_str().map(str::trim).filter(|s|!s.is_empty());
-    if explicit.zip(arn_region).is_some_and(|(a,b)|a!=b){return Err("Kiro 登录区域与 profileArn 不一致，请在 Kiro 中重新登录".into());}
+    if explicit.zip(arn_region).is_some_and(|(a,b)|a!=b){return Err("Kiro region doesn't match profileArn; sign in to Kiro again".into());}
     let region=arn_region.or(explicit).unwrap_or("us-east-1").to_owned();endpoint(&region)?;
     if root.get("expiresAt").is_some_and(|v|!v.is_null()&&v.as_str().and_then(|s|chrono::DateTime::parse_from_rfc3339(s).ok()).is_none()){
-        return Err("Kiro 登录过期时间无效，请在 Kiro 中重新登录".into());
+        return Err("Invalid Kiro expiry; sign in to Kiro again".into());
     }
     Ok(Login{access_token:token,profile_arn,region})
 }
@@ -36,14 +36,14 @@ fn body(profile_arn:Option<&str>)->Value{
     match profile_arn.filter(|arn|!arn.trim().is_empty()){Some(arn)=>json!({"profileArn":arn}),None=>json!({})}
 }
 fn owner(v:&Value)->Result<String,String>{
-    let user=v["userInfo"]["userId"].as_str().map(str::trim).filter(|s|!s.is_empty()&&s.len()<=4096).ok_or("Kiro 未返回可核验的用户标识，暂不显示此账号额度")?;
+    let user=v["userInfo"]["userId"].as_str().map(str::trim).filter(|s|!s.is_empty()&&s.len()<=4096).ok_or("Kiro returned no verifiable user ID; quota hidden for now")?;
     let hash=ring::digest::digest(&ring::digest::SHA256,user.as_bytes()).as_ref().iter().map(|b|format!("{b:02x}")).collect::<String>();
     Ok(format!("kiro-user:{hash}"))
 }
 pub(super) fn verified_slot(slot:&str)->bool{slot.strip_prefix("kiro-user:").is_some_and(|s|s.len()==64&&s.bytes().all(|b|b.is_ascii_hexdigit()))}
 pub(crate) fn check_owner(account:&Account,snapshot:&Snapshot)->Result<(),String>{
-    let actual=snapshot.kiro.as_ref().map(|d|d.owner.as_str()).filter(|s|verified_slot(s)).ok_or("Kiro 用户身份尚未核验，请重新连接")?;
-    if account.slot.as_deref().is_some_and(|s|s!=actual){return Err("Kiro 已切换账号或身份尚未核验，请重新连接对应账号".into());}
+    let actual=snapshot.kiro.as_ref().map(|d|d.owner.as_str()).filter(|s|verified_slot(s)).ok_or("Kiro user not verified; reconnect")?;
+    if account.slot.as_deref().is_some_and(|s|s!=actual){return Err("Kiro switched accounts or isn't verified; reconnect that account".into());}
     Ok(())
 }
 
@@ -54,21 +54,21 @@ pub struct Details {pub owner:String,pub pools:Vec<Pool>}
 
 pub(crate) fn add(config:&mut Config,path:&Path,alias:&str)->Result<(),String>{
     let root=super::login_json(path)?;login(&root)?;
-    let path=std::fs::canonicalize(path).map_err(|_|"无法读取 Kiro 登录文件")?;
-    if config.accounts.iter().any(|a|a.provider==Provider::Kiro&&a.source==path){return Err("这个 Kiro 登录文件已经添加，请使用重新连接".into());}
+    let path=std::fs::canonicalize(path).map_err(|_|"Can't read the Kiro login file")?;
+    if config.accounts.iter().any(|a|a.provider==Provider::Kiro&&a.source==path){return Err("This Kiro login file is already added; use Reconnect".into());}
     let next=config.accounts.iter().filter(|a|a.provider==Provider::Kiro).count()+1;
     let id=format!("Kiro-{}",std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
     if config.selected.is_empty(){config.selected=id.clone();}
     // 首次查询后绑定服务端用户标识，客户端注册及令牌不作为用户身份。
-    config.accounts.push(Account{id,provider:Provider::Kiro,alias:if alias.trim().is_empty(){format!("Kiro · 账号 {next}")}else{alias.trim().into()},source:path,slot:None,enabled:true,pinned:config.accounts.is_empty()});
+    config.accounts.push(Account{id,provider:Provider::Kiro,alias:if alias.trim().is_empty(){format!("Kiro · Account {next}")}else{alias.trim().into()},source:path,slot:None,enabled:true,pinned:config.accounts.is_empty()});
     Ok(())
 }
 fn response_error(error:ureq::Error)->(String,u64){
     match error{
-        ureq::Error::Status(401|403,_) =>("Kiro 登录已过期，请打开 Kiro 重新登录后刷新额度".into(),0),
-        ureq::Error::Status(429,r) =>("Kiro 请求过于频繁，稍后自动重试".into(),r.header("Retry-After").and_then(|s|s.parse::<u64>().ok()).unwrap_or(180).clamp(30,3600)),
-        ureq::Error::Status(code,_) =>(format!("Kiro 额度服务返回 {code}"),60),
-        _ =>("无法连接 Kiro 额度服务，请检查网络或代理".into(),30),
+        ureq::Error::Status(401|403,_) =>("Kiro sign-in expired; sign in again in Kiro and refresh".into(),0),
+        ureq::Error::Status(429,r) =>("Too many Kiro requests; retrying shortly".into(),r.header("Retry-After").and_then(|s|s.parse::<u64>().ok()).unwrap_or(180).clamp(30,3600)),
+        ureq::Error::Status(code,_) =>(format!("Kiro quota service returned {code}"),60),
+        _ =>("Can't reach Kiro quota service; check network or proxy".into(),30),
     }
 }
 fn request_at(agent:&ureq::Agent,l:&Login,url:&str)->Result<Snapshot,(String,u64)>{
@@ -77,9 +77,9 @@ fn request_at(agent:&ureq::Agent,l:&Login,url:&str)->Result<Snapshot,(String,u64
         .set("Authorization",&format!("Bearer {}",l.access_token)).set("Accept","application/json")
         .send_string(&body(l.profile_arn.as_deref()).to_string()).map_err(response_error)?;
     if !(200..300).contains(&response.status()){return Err(response_error(ureq::Error::Status(response.status(),response)));}
-    let mut bytes=Vec::new();response.into_reader().take(1024*1024+1).read_to_end(&mut bytes).map_err(|_|("读取 Kiro 额度响应失败".into(),30))?;
-    if bytes.len()>1024*1024{return Err(("Kiro 额度响应过大".into(),60));}
-    let v:Value=serde_json::from_slice(&bytes).map_err(|_|("Kiro 额度响应无效".into(),60))?;
+    let mut bytes=Vec::new();response.into_reader().take(1024*1024+1).read_to_end(&mut bytes).map_err(|_|("Failed to read Kiro quota response".into(),30))?;
+    if bytes.len()>1024*1024{return Err(("Kiro quota response too large".into(),60));}
+    let v:Value=serde_json::from_slice(&bytes).map_err(|_|("Invalid Kiro quota response".into(),60))?;
     parse(&v).map_err(|e|(e,60))
 }
 fn query(agent:&ureq::Agent,path:&Path)->Result<Snapshot,(String,u64)>{
@@ -91,11 +91,11 @@ fn query_with(path:&Path,request:impl FnOnce(&Login)->Result<Snapshot,(String,u6
     // 直接带令牌请求，由服务端 401/403 判定失效。Kiro 续期后改写缓存文件，每次查询都重新读取，能自动恢复。
     let snapshot=request(&l)?;
     let current=super::login_json(path).and_then(|root|login(&root)).map_err(|e|(e,0))?;
-    if current.access_token!=l.access_token||current.profile_arn!=l.profile_arn||current.region!=l.region{return Err(("Kiro 登录信息已变化，请重新刷新额度".into(),0));}
+    if current.access_token!=l.access_token||current.profile_arn!=l.profile_arn||current.region!=l.region{return Err(("Kiro sign-in changed; refresh quota".into(),0));}
     Ok(snapshot)
 }
 pub(super) fn fetch(agent:&ureq::Agent,a:&Account)->Result<Snapshot,(String,u64)>{
-    if a.slot.as_deref().is_some_and(|s|!verified_slot(s)){return Err(("Kiro 账号身份需要重新核验，请重新连接".into(),0));}
+    if a.slot.as_deref().is_some_and(|s|!verified_slot(s)){return Err(("Kiro account needs re-verification; reconnect".into(),0));}
     let snapshot=query(agent,&a.source)?;check_owner(a,&snapshot).map_err(|e|(e,0))?;Ok(snapshot)
 }
 
@@ -104,7 +104,7 @@ pub struct Connect {rx:mpsc::Receiver<Result<Connected,String>>,pub target:Optio
 impl Connect {
     pub fn start(path:PathBuf,label:String,target:Option<Account>)->Self{
         let(tx,rx)=mpsc::channel();std::thread::spawn(move||{
-            let result=(||{let source=std::fs::canonicalize(path).map_err(|_|"无法读取 Kiro 登录文件")?;
+            let result=(||{let source=std::fs::canonicalize(path).map_err(|_|"Can't read the Kiro login file")?;
                 let snapshot=query(&super::http_agent(),&source).map_err(|e|e.0)?;Ok(Connected{source,label,snapshot})})();let _=tx.send(result);
         });Self{rx,target,cancelled:false}
     }
@@ -115,12 +115,12 @@ impl Connect {
     pub(crate) fn pending(target:Option<Account>)->(Self,mpsc::Sender<Result<Connected,String>>){let(tx,rx)=mpsc::channel();(Self{rx,target,cancelled:false},tx)}
 }
 pub(crate) fn apply_connection(config:&mut Config,target:Option<&Account>,connected:&Connected)->Result<String,String>{
-    let slot=connected.snapshot.kiro.as_ref().map(|d|d.owner.clone()).filter(|s|verified_slot(s)).ok_or("Kiro 用户身份尚未核验")?;
+    let slot=connected.snapshot.kiro.as_ref().map(|d|d.owner.clone()).filter(|s|verified_slot(s)).ok_or("Kiro user not verified")?;
     let index=if let Some(old)=target{
-        let index=config.accounts.iter().position(|a|a.id==old.id&&a.provider==Provider::Kiro&&a.source==old.source&&(a.slot==old.slot||(old.slot.is_none()&&a.slot.as_deref()==Some(&slot)))).ok_or("原 Kiro 账号已变化，请重新连接")?;
-        if old.slot.as_deref().filter(|s|verified_slot(s)).is_some_and(|s|s!=slot){return Err("本机 Kiro 当前不是这个账号，请切换回原账号或添加新账号".into());}Some(index)
+        let index=config.accounts.iter().position(|a|a.id==old.id&&a.provider==Provider::Kiro&&a.source==old.source&&(a.slot==old.slot||(old.slot.is_none()&&a.slot.as_deref()==Some(&slot)))).ok_or("The original Kiro account changed; reconnect")?;
+        if old.slot.as_deref().filter(|s|verified_slot(s)).is_some_and(|s|s!=slot){return Err("Local Kiro is on a different account; switch back or add a new account".into());}Some(index)
     }else{config.accounts.iter().position(|a|a.provider==Provider::Kiro&&a.slot.is_none()&&a.source==connected.source)};
-    if config.accounts.iter().enumerate().any(|(i,a)|Some(i)!=index&&a.provider==Provider::Kiro&&a.slot.as_deref()==Some(&slot)){return Err("这个 Kiro 账号已经添加，请使用重新连接".into());}
+    if config.accounts.iter().enumerate().any(|(i,a)|Some(i)!=index&&a.provider==Provider::Kiro&&a.slot.as_deref()==Some(&slot)){return Err("This Kiro account is already added; use Reconnect".into());}
     let id=if let Some(index)=index{
         let a=&mut config.accounts[index];a.source=connected.source.clone();a.slot=Some(slot);a.enabled=true;if !connected.label.trim().is_empty(){a.alias=connected.label.trim().into();}a.id.clone()
     }else{
@@ -134,7 +134,7 @@ fn timestamp(v:&Value)->Option<i64>{
 }
 fn amount_field(v:&Value,precise:&str,integer:&str)->Result<f64,String>{
     let raw=v.get(precise).filter(|v|!v.is_null()).unwrap_or(&v[integer]);
-    super::number(raw).filter(|n|*n>=0.0).ok_or_else(||"Kiro 额度字段无效，暂时无法显示".into())
+    super::number(raw).filter(|n|*n>=0.0).ok_or_else(||"Invalid Kiro quota fields; can't show yet".into())
 }
 fn pool(v:&Value,label:String,reset:Option<i64>,expires:Option<i64>)->Result<Pool,String>{
     let limit=amount_field(v,"usageLimitWithPrecision","usageLimit")?;let used=amount_field(v,"currentUsageWithPrecision","currentUsage")?;
@@ -142,10 +142,10 @@ fn pool(v:&Value,label:String,reset:Option<i64>,expires:Option<i64>)->Result<Poo
 }
 fn active_pool(v:&Value,status:&str,expiry:&str,label:&str)->Result<Option<Pool>,String>{
     if v.is_null(){return Ok(None);}
-    let status=v[status].as_str().ok_or("Kiro 积分池状态缺失，暂时无法显示完整点数")?;
+    let status=v[status].as_str().ok_or("Kiro credit pool status missing; can't show full points")?;
     if status.eq_ignore_ascii_case("EXPIRED")||status.eq_ignore_ascii_case("INACTIVE"){return Ok(None);}
-    if !status.eq_ignore_ascii_case("ACTIVE"){return Err("Kiro 积分池状态未知，暂时无法显示完整点数".into());}
-    let expires=if v[expiry].is_null(){None}else{Some(timestamp(&v[expiry]).ok_or("Kiro 额度到期时间无效")?)};
+    if !status.eq_ignore_ascii_case("ACTIVE"){return Err("Kiro credit pool status unknown; can't show full points".into());}
+    let expires=if v[expiry].is_null(){None}else{Some(timestamp(&v[expiry]).ok_or("Invalid Kiro quota expiry")?)};
     if expires.is_some_and(|t|t<=chrono::Utc::now().timestamp()){return Ok(None);}
     pool(v,label.into(),None,expires).map(Some)
 }
@@ -153,30 +153,30 @@ pub(super) fn parse(v:&Value)->Result<Snapshot,String>{
     let owner=owner(v)?;
     let plan=v["subscriptionInfo"]["subscriptionTitle"].as_str().filter(|s|!s.trim().is_empty()).unwrap_or("Kiro").to_owned();
     let mut snapshot=Snapshot{plan,at:chrono::Utc::now().timestamp(),..Default::default()};
-    let rows=v["usageBreakdownList"].as_array().ok_or("Kiro 未返回用量明细")?;
-    let credit=rows.iter().find(|e|e["resourceType"]=="CREDIT").ok_or("Kiro 未返回套餐额度")?;
+    let rows=v["usageBreakdownList"].as_array().ok_or("Kiro returned no usage details")?;
+    let credit=rows.iter().find(|e|e["resourceType"]=="CREDIT").ok_or("Kiro returned no plan quota")?;
     let limit=amount_field(credit,"usageLimitWithPrecision","usageLimit")?;let used=amount_field(credit,"currentUsageWithPrecision","currentUsage")?;
     let overage=if credit["currentOveragesWithPrecision"].is_null()&&credit["currentOverages"].is_null(){0.0}else{amount_field(credit,"currentOveragesWithPrecision","currentOverages")?};
     let reset=timestamp(&credit["nextDateReset"]).or_else(||timestamp(&v["nextDateReset"]));
-    let mut pools=vec![Pool{label:"月度额度".into(),amount:Amount::new((limit-(used-overage).max(0.0)).max(0.0),limit),reset,expires:None}];
-    if let Some(p)=active_pool(&credit["freeTrialInfo"],"freeTrialStatus","freeTrialExpiry","试用额度")?{pools.push(p);}
+    let mut pools=vec![Pool{label:"Monthly quota".into(),amount:Amount::new((limit-(used-overage).max(0.0)).max(0.0),limit),reset,expires:None}];
+    if let Some(p)=active_pool(&credit["freeTrialInfo"],"freeTrialStatus","freeTrialExpiry","Trial quota")?{pools.push(p);}
     let bonuses=match &credit["bonuses"]{
         Value::Null=>&[][..],
         Value::Array(items)=>items.as_slice(),
         item @ Value::Object(_)=>std::slice::from_ref(item),
-        _=>return Err("Kiro 赠送额度格式异常，暂时无法显示完整点数".into()),
+        _=>return Err("Kiro bonus quota malformed; can't show full points".into()),
     };
     for bonus in bonuses{
-        if !bonus.is_object(){return Err("Kiro 赠送额度明细无效，暂时无法显示完整点数".into());}
-        if let Some(p)=active_pool(bonus,"status","expiresAt",bonus["displayName"].as_str().filter(|s|!s.trim().is_empty()).unwrap_or("赠送 / 加购额度"))?{pools.push(p);}
+        if !bonus.is_object(){return Err("Kiro bonus quota details invalid; can't show full points".into());}
+        if let Some(p)=active_pool(bonus,"status","expiresAt",bonus["displayName"].as_str().filter(|s|!s.trim().is_empty()).unwrap_or("Bonus / add-on quota"))?{pools.push(p);}
     }
     let total=Amount::new(pools.iter().map(|p|p.amount.remaining).sum(),pools.iter().map(|p|p.amount.limit).sum());
-    if !total.limit.is_finite()||!total.remaining.is_finite(){return Err("Kiro 额度总量无效".into());}
-    snapshot.windows.push(Window{label:if pools.len()>1{"可用点数"}else{"月度额度"}.into(),seconds:None,remaining:if total.limit>0.0{(total.remaining/total.limit*100.0) as f32}else{0.0},reset:if pools.len()>1{None}else{reset},amount:Some(total)});
+    if !total.limit.is_finite()||!total.remaining.is_finite(){return Err("Invalid Kiro quota total".into());}
+    snapshot.windows.push(Window{label:if pools.len()>1{"Available points"}else{"Monthly quota"}.into(),seconds:None,remaining:if total.limit>0.0{(total.remaining/total.limit*100.0) as f32}else{0.0},reset:if pools.len()>1{None}else{reset},amount:Some(total)});
     if v["overageConfiguration"]["overageStatus"].as_str().is_some_and(|s|s.eq_ignore_ascii_case("ENABLED")){
         if !credit["overageCapWithPrecision"].is_null()||!credit["overageCap"].is_null(){
             let cap=amount_field(credit,"overageCapWithPrecision","overageCap")?;
-            if cap>0.0{let left=(cap-overage).max(0.0);snapshot.windows.push(Window{label:"超额上限余量".into(),seconds:None,remaining:(left/cap*100.0).clamp(0.0,100.0) as f32,reset,amount:Some(Amount::new(left,cap))});}
+            if cap>0.0{let left=(cap-overage).max(0.0);snapshot.windows.push(Window{label:"Overage cap left".into(),seconds:None,remaining:(left/cap*100.0).clamp(0.0,100.0) as f32,reset,amount:Some(Amount::new(left,cap))});}
         }
     }
     snapshot.kiro=Some(Details{owner,pools});Ok(snapshot)

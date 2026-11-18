@@ -15,7 +15,7 @@ const MAX_PROBE_REQUESTS:usize=4;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind { NewApi, OneApi, Sub2Api }
 impl Kind {
-    fn name(self) -> &'static str { match self { Self::NewApi => "New API", Self::OneApi => "兼容计费接口", Self::Sub2Api => "Sub2API" } }
+    fn name(self) -> &'static str { match self { Self::NewApi => "New API", Self::OneApi => "Compatible billing API", Self::Sub2Api => "Sub2API" } }
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -45,22 +45,22 @@ impl Quota {
             .or_else(||self.amounts.iter().filter(|a|a.displayable()).min_by(|a,b|a.remaining.unwrap().total_cmp(&b.remaining.unwrap())))
     }
     pub fn unavailable_text(&self)->&'static str{
-        if self.amounts.iter().any(|a|matches!(a.scope,Scope::Subscription)){"额度暂不可查询"}else{"余额暂不可查询"}
+        if self.amounts.iter().any(|a|matches!(a.scope,Scope::Subscription)){"Quota not available"}else{"Balance not available"}
     }
     pub fn compact(&self) -> String {
         let Some(a) = self.primary() else { return self.unavailable_text().into() };
-        if matches!(a.scope,Scope::Subscription){format!("{}剩余 {}",a.label,a.remaining_text())}else{a.remaining_text()}
+        if matches!(a.scope,Scope::Subscription){format!("{} {} left",a.label,a.remaining_text())}else{a.remaining_text()}
     }
     pub fn full(&self) -> String {
         let mut rows = vec![self.source.clone()];
         if self.primary().is_none(){rows.push(self.unavailable_text().into());}
         for a in self.amounts.iter().filter(|a|a.displayable()) {
             let value = a.remaining_text();
-            let used = a.used.map(|n|format!("，已用 {} {}",number(n),a.unit)).unwrap_or_default();
-            rows.push(format!("{}：剩余 {value}{used}",a.label));
+            let used = a.used.map(|n|format!(", {} {} used",number(n),a.unit)).unwrap_or_default();
+            rows.push(format!("{}: {value} left{used}",a.label));
         }
         if self.amounts.iter().any(|a|a.displayable()&&matches!(a.scope,Scope::Subscription)){
-            if let Some(at) = self.expires_at.and_then(|t|chrono::DateTime::from_timestamp(t,0)) { rows.push(format!("到期 {} UTC",at.format("%Y-%m-%d %H:%M"))); }
+            if let Some(at) = self.expires_at.and_then(|t|chrono::DateTime::from_timestamp(t,0)) { rows.push(format!("Expires {} UTC",at.format("%Y-%m-%d %H:%M"))); }
         }
         rows.join("\n")
     }
@@ -72,7 +72,7 @@ impl Amount {
         }
     }
     pub fn remaining_text(&self)->String{
-        if !self.displayable(){return "额度暂不可查询".into();}
+        if !self.displayable(){return "Quota not available".into();}
         let remaining=self.remaining.unwrap();
         if matches!(self.scope,Scope::Subscription){format!("{:.0}%",(remaining/self.limit.unwrap()*100.0).clamp(0.0,100.0))}else{format!("{} {}",number(remaining),self.unit)}
     }
@@ -86,10 +86,10 @@ fn number(n:f64)->String {
 /// HTTPS only: localhost HTTP is deliberately not an implicit credential exception.
 pub fn validate_base_url(raw:&str)->Result<String,String> {
     let raw=raw.trim();
-    if raw.is_empty() || raw.chars().any(char::is_whitespace) || raw.contains('\\') { return Err("请输入有效的 HTTPS 站点地址".into()); }
-    let url=url::Url::parse(raw).map_err(|_|"请输入完整的 HTTPS 站点地址")?;
+    if raw.is_empty() || raw.chars().any(char::is_whitespace) || raw.contains('\\') { return Err("Enter a valid HTTPS site URL".into()); }
+    let url=url::Url::parse(raw).map_err(|_|"Enter the full HTTPS site URL")?;
     if url.scheme()!="https" || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() || url.query().is_some() || url.fragment().is_some() {
-        return Err("站点地址必须使用 HTTPS，且不能包含账号、查询参数或片段".into());
+        return Err("The site URL must use HTTPS and can't include credentials, query or fragment".into());
     }
     Ok(url.as_str().trim_end_matches('/').to_owned())
 }
@@ -98,8 +98,8 @@ pub fn validate_base_url(raw:&str)->Result<String,String> {
 pub fn normalize_base_url(raw:&str)->Result<String,String>{validate_base_url(raw)}
 
 fn numeric(v:&Value)->Option<f64> { v.as_f64().filter(|n|n.is_finite()) }
-fn required(v:&Value,key:&str)->Result<f64,String> { numeric(&v[key]).ok_or_else(||"站点返回的额度字段缺失或无效".into()) }
-fn nonnegative(v:&Value,key:&str)->Result<f64,String> { required(v,key).and_then(|n|if n>=0.0{Ok(n)}else{Err("站点返回的额度字段无效".into())}) }
+fn required(v:&Value,key:&str)->Result<f64,String> { numeric(&v[key]).ok_or_else(||"The site's quota fields are missing or invalid".into()) }
+fn nonnegative(v:&Value,key:&str)->Result<f64,String> { required(v,key).and_then(|n|if n>=0.0{Ok(n)}else{Err("The site's quota fields are invalid".into())}) }
 fn expiry(v:&Value)->Option<i64> {
     v.as_i64().filter(|n|*n>0).or_else(||v.as_str().and_then(|s|chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d|d.timestamp()).filter(|n|*n>0))
 }
@@ -114,26 +114,26 @@ fn amount(label:&str,unit:&str,remaining:Option<f64>,limit:Option<f64>,used:Opti
 }
 
 pub fn parse_new_api(v:&Value)->Result<Snapshot,String> {
-    if v["code"]!=true || !v["error"].is_null() { return Err("站点未返回有效的令牌额度".into()); }
+    if v["code"]!=true || !v["error"].is_null() { return Err("The site returned no valid token quota".into()); }
     let d=&v["data"];
-    if d["object"]!="token_usage" { return Err("该站点版本不支持 New API 令牌额度接口".into()); }
-    if !d["unit"].is_null()&&d["unit"]!="quota"{return Err("站点额度单位与 New API 令牌协议不一致".into());}
-    let unlimited=d["unlimited_quota"].as_bool().ok_or("站点未返回令牌限额状态")?;
+    if d["object"]!="token_usage" { return Err("This site version doesn't support the New API token quota endpoint".into()); }
+    if !d["unit"].is_null()&&d["unit"]!="quota"{return Err("The site's quota unit doesn't match the New API token protocol".into());}
+    let unlimited=d["unlimited_quota"].as_bool().ok_or("The site returned no token limit status")?;
     let used=nonnegative(d,"total_used")?;
     let (remaining,limit)=if unlimited {(None,None)}else{(Some(required(d,"total_available")?),Some(nonnegative(d,"total_granted")?))};
-    let windows=match (remaining,limit) { (Some(r),Some(l))=>window("令牌额度",l,r,None,None).into_iter().collect(),_=>vec![] };
-    let mut amounts=vec![amount("令牌额度","站点配额",remaining,limit,Some(used),unlimited,Scope::Key)];
+    let windows=match (remaining,limit) { (Some(r),Some(l))=>window("Token quota",l,r,None,None).into_iter().collect(),_=>vec![] };
+    let mut amounts=vec![amount("Token quota","Site quota",remaining,limit,Some(used),unlimited,Scope::Key)];
     if d["user_quota"].is_object() {
         let u=&d["user_quota"];
-        if !u["unit"].is_null()&&u["unit"]!="quota"{return Err("站点账户额度单位与令牌额度不一致".into());}
-        amounts.push(amount("账户额度","站点配额",Some(required(u,"total_available")?),None,Some(nonnegative(u,"total_used")?),false,Scope::Account));
+        if !u["unit"].is_null()&&u["unit"]!="quota"{return Err("The site's account quota unit doesn't match the token quota".into());}
+        amounts.push(amount("Account quota","Site quota",Some(required(u,"total_available")?),None,Some(nonnegative(u,"total_used")?),false,Scope::Account));
     }
     Ok(snapshot(Kind::NewApi,amounts,expiry(&d["expires_at"]),windows))
 }
 
 pub fn parse_one_api(subscription:&Value,usage:&Value)->Result<Snapshot,String> {
     if !subscription["error"].is_null() || !usage["error"].is_null() || subscription["object"]!="billing_subscription" || usage["object"]!="list" {
-        return Err("该站点未返回有效的 One API 计费额度".into());
+        return Err("The site returned no valid One API billing quota".into());
     }
     let limit=nonnegative(subscription,"hard_limit_usd")?;
     // This endpoint multiplies usage by 100 even when DisplayInCurrencyEnabled is false.
@@ -142,30 +142,30 @@ pub fn parse_one_api(subscription:&Value,usage:&Value)->Result<Snapshot,String> 
     // from a real numeric limit. Never present a fabricated balance or percentage.
     let ambiguous=limit==100_000_000.0;
     let remaining=if ambiguous {None}else{Some(limit-used)};
-    let windows=remaining.and_then(|r|window("计费额度",limit,r,None,None)).into_iter().collect();
-    Ok(snapshot(Kind::OneApi,vec![amount("计费额度","站点单位",remaining,if ambiguous{None}else{Some(limit)},Some(used),false,Scope::Unknown)],expiry(&subscription["access_until"]),windows))
+    let windows=remaining.and_then(|r|window("Billing quota",limit,r,None,None)).into_iter().collect();
+    Ok(snapshot(Kind::OneApi,vec![amount("Billing quota","site units",remaining,if ambiguous{None}else{Some(limit)},Some(used),false,Scope::Unknown)],expiry(&subscription["access_until"]),windows))
 }
 
 pub fn parse_sub2api(v:&Value)->Result<Snapshot,String> {
-    if v["isValid"]!=true || !v["error"].is_null() { return Err("站点未返回有效的 Sub2API 额度".into()); }
-    if !v["unit"].is_null()&&v["unit"]!="USD"{return Err("站点返回了未知的额度单位".into());}
+    if v["isValid"]!=true || !v["error"].is_null() { return Err("The site returned no valid Sub2API quota".into()); }
+    if !v["unit"].is_null()&&v["unit"]!="USD"{return Err("The site returned an unknown quota unit".into());}
     let mut amounts=vec![];let mut windows=vec![];
     match v["mode"].as_str() {
         Some("quota_limited")=>{
             if !v["quota"].is_null() {
                 let q=&v["quota"];
-                if q["unit"]!="USD" {return Err("站点返回了未知的额度单位".into());}
+                if q["unit"]!="USD" {return Err("The site returned an unknown quota unit".into());}
                 let limit=nonnegative(q,"limit")?;let used=nonnegative(q,"used")?;let remaining=required(q,"remaining")?;
-                amounts.push(amount("API Key 总额度","USD",Some(remaining),Some(limit),Some(used),false,Scope::Key));
-                if let Some(w)=window("总额度",limit,remaining,None,None){windows.push(w);}
+                amounts.push(amount("API key total","USD",Some(remaining),Some(limit),Some(used),false,Scope::Key));
+                if let Some(w)=window("Total",limit,remaining,None,None){windows.push(w);}
             }
             if let Some(rows)=v["rate_limits"].as_array() {
-                if rows.len()>3 {return Err("站点返回了重复或过多的限额周期".into());}
+                if rows.len()>3 {return Err("The site returned duplicate or too many limit windows".into());}
                 let mut seen=std::collections::HashSet::new();
                 for row in rows {
-                    if !row["unit"].is_null()&&row["unit"]!="USD"{return Err("站点返回了未知的额度单位".into());}
-                    let (label,seconds)=match row["window"].as_str(){Some("5h")=>("5 小时",18000),Some("1d")=>("每日",86400),Some("7d")=>("每周",604800),_=>return Err("站点返回了未知的限额周期".into())};
-                    if !seen.insert(seconds){return Err("站点返回了重复的限额周期".into());}
+                    if !row["unit"].is_null()&&row["unit"]!="USD"{return Err("The site returned an unknown quota unit".into());}
+                    let (label,seconds)=match row["window"].as_str(){Some("5h")=>("5 hours",18000),Some("1d")=>("Daily",86400),Some("7d")=>("Weekly",604800),_=>return Err("The site returned an unknown limit window".into())};
+                    if !seen.insert(seconds){return Err("The site returned duplicate limit windows".into());}
                     let limit=nonnegative(row,"limit")?;let used=nonnegative(row,"used")?;let remaining=required(row,"remaining")?;
                     // Official rate_limits fields are USD spending limits, not request counts.
                     amounts.push(amount(label,"USD",Some(remaining),Some(limit),Some(used),false,Scope::Key));
@@ -174,10 +174,10 @@ pub fn parse_sub2api(v:&Value)->Result<Snapshot,String> {
             }
         }
         Some("unrestricted")=>{
-            if v["unit"]!="USD" {return Err("站点返回了未知的额度单位".into());}
+            if v["unit"]!="USD" {return Err("The site returned an unknown quota unit".into());}
             if v["subscription"].is_object() {
                 let sub=&v["subscription"];
-                for (prefix,label,seconds) in [("daily","每日",86400),("weekly","每周",604800),("monthly","每月",2592000)] {
+                for (prefix,label,seconds) in [("daily","Daily",86400),("weekly","Weekly",604800),("monthly","Monthly",2592000)] {
                     let field=format!("{prefix}_limit_usd");
                     // Null / absent is not an exhausted window, and does not prove unlimited.
                     if sub[&field].is_null(){continue;}
@@ -190,30 +190,30 @@ pub fn parse_sub2api(v:&Value)->Result<Snapshot,String> {
                 if amounts.is_empty() {
                     // -1 is an explicit unlimited signal only for this subscription mode.
                     if numeric(&v["remaining"])==Some(-1.0) {
-                        amounts.push(amount("订阅额度","USD",None,None,None,true,Scope::Subscription));
-                    } else { return Err("站点未返回可用的订阅限额明细".into()); }
+                        amounts.push(amount("Subscription quota","USD",None,None,None,true,Scope::Subscription));
+                    } else { return Err("The site returned no subscription limit details".into()); }
                 }
             } else if !v["balance"].is_null() {
-                amounts.push(amount("账户余额","USD",Some(required(v,"balance")?),None,None,false,Scope::Account));
+                amounts.push(amount("Account balance","USD",Some(required(v,"balance")?),None,None,false,Scope::Account));
             } else {
-                return Err("站点未返回订阅限额或钱包余额，请检查站点版本与权限".into());
+                return Err("The site returned no subscription limit or wallet balance; check site version and permissions".into());
             }
         }
-        _=>return Err("该站点版本不支持当前 Sub2API 额度协议".into()),
+        _=>return Err("This site version doesn't support the current Sub2API quota protocol".into()),
     }
-    if amounts.is_empty(){return Err("站点未返回可用的额度明细".into());}
+    if amounts.is_empty(){return Err("The site returned no quota details".into());}
     let expires=expiry(&v["expires_at"]).or_else(||expiry(&v["subscription"]["expires_at"]));
     Ok(snapshot(Kind::Sub2Api,amounts,expires,windows))
 }
 
 fn response_error(status:u16)->(String,u64) {
     match status {
-        401=>("站点认证失败（401），请核对 API Key".into(),0),
-        403=>("站点拒绝额度查询（403），请检查权限".into(),60),
-        404=>("站点没有该额度接口（404），请核对类型、地址和版本".into(),60),
-        429=>("站点请求过于频繁，请稍后重试".into(),180),
-        300..=399=>("站点要求重定向；为保护 API Key 已停止，请填写最终 HTTPS 地址".into(),0),
-        _=>(format!("站点额度服务暂不可用（{status}）"),30),
+        401=>("Site authentication failed (401); check the API key".into(),0),
+        403=>("The site refused the quota query (403); check permissions".into(),60),
+        404=>("The site has no such quota endpoint (404); check type, URL and version".into(),60),
+        429=>("Too many requests to the site; try again later".into(),180),
+        300..=399=>("The site redirected; stopped to protect the API key. Enter the final HTTPS URL".into(),0),
+        _=>(format!("Site quota service unavailable ({status})"),30),
     }
 }
 #[derive(Debug)]
@@ -225,28 +225,28 @@ fn query(agent:&ureq::Agent,url:&str,key:&str,timeout:Option<Duration>)->Result<
     let request=if let Some(timeout)=timeout{request.timeout(timeout)}else{request};
     let response=request.call().map_err(|e|match e{
         ureq::Error::Status(s,_)=>if matches!(s,404|405){ProbeError::Unsupported(response_error(s))}else{ProbeError::Stop(response_error(s))},
-        _=>ProbeError::Stop(("无法连接额度站点，请检查网络与地址".into(),30)),
+        _=>ProbeError::Stop(("Can't reach the quota site; check network and URL".into(),30)),
     })?;
     if !(200..300).contains(&response.status()){return Err(ProbeError::Stop(response_error(response.status())));}
     const MAX:u64=1024*1024;
     let mut raw=Vec::new();
-    response.into_reader().take(MAX+1).read_to_end(&mut raw).map_err(|_|ProbeError::Stop(("读取站点额度失败".into(),30)))?;
-    if raw.len() as u64>MAX{return Err(ProbeError::Stop(("站点额度响应过大".into(),60)));}
-    serde_json::from_slice(&raw).map_err(|_|ProbeError::Unsupported(("站点未返回有效的 JSON 额度响应".into(),30)))
+    response.into_reader().take(MAX+1).read_to_end(&mut raw).map_err(|_|ProbeError::Stop(("Failed to read site quota".into(),30)))?;
+    if raw.len() as u64>MAX{return Err(ProbeError::Stop(("Site quota response too large".into(),60)));}
+    serde_json::from_slice(&raw).map_err(|_|ProbeError::Unsupported(("The site returned no valid JSON quota response".into(),30)))
 }
 fn get(agent:&ureq::Agent,url:&str,key:&str)->Result<Value,(String,u64)>{query(agent,url,key,None).map_err(ProbeError::detail)}
 
 fn detect_with(mut query:impl FnMut(&str,Duration)->Result<Value,ProbeError>,cancelled:impl Fn()->bool,budget:Duration)->Result<(Kind,Snapshot),(String,u64)>{
     let deadline=Instant::now()+budget;let mut requests=0;
     let mut next=|path:&str|->Result<Option<Value>,(String,u64)>{
-        if cancelled(){return Err(("已取消连接".into(),0));}
-        let remaining=deadline.checked_duration_since(Instant::now()).filter(|d|!d.is_zero()).ok_or_else(||("自动识别超时，请稍后重试或在高级设置中手动选择".into(),30))?;
-        if requests>=MAX_PROBE_REQUESTS{return Err(("已达到自动识别请求上限".into(),60));}requests+=1;
+        if cancelled(){return Err(("Connection cancelled".into(),0));}
+        let remaining=deadline.checked_duration_since(Instant::now()).filter(|d|!d.is_zero()).ok_or_else(||("Auto-detect timed out; try again later or choose manually in Advanced".into(),30))?;
+        if requests>=MAX_PROBE_REQUESTS{return Err(("Auto-detect request limit reached".into(),60));}requests+=1;
         let response=query(path,remaining.min(PROBE_TIMEOUT));
-        if cancelled(){return Err(("已取消连接".into(),0));}
-        if Instant::now()>=deadline{return Err(("自动识别超时，请稍后重试或在高级设置中手动选择".into(),30));}
+        if cancelled(){return Err(("Connection cancelled".into(),0));}
+        if Instant::now()>=deadline{return Err(("Auto-detect timed out; try again later or choose manually in Advanced".into(),30));}
         let value=match response{Ok(v)=>v,Err(ProbeError::Unsupported(_))=>return Ok(None),Err(ProbeError::Stop(e))=>return Err(e)};
-        if value["code"]==false||value["success"]==false||value["isValid"]==false||!value["error"].is_null(){return Err(("站点拒绝额度查询，请核对 API Key 与查询权限".into(),60));}
+        if value["code"]==false||value["success"]==false||value["isValid"]==false||!value["error"].is_null(){return Err(("The site refused the quota query; check the API key and permissions".into(),60));}
         Ok(Some(value))
     };
     // 优先专用额度协议；兼容计费接口不证明站点品牌，也不证明账户或 Key 范围。
@@ -256,31 +256,31 @@ fn detect_with(mut query:impl FnMut(&str,Duration)->Result<Value,ProbeError>,can
             Kind::NewApi if value["data"]["object"]=="token_usage"=>parse_new_api(&value),
             Kind::Sub2Api if value.get("mode").is_some()=>parse_sub2api(&value),
             Kind::OneApi if value["object"]=="billing_subscription"=>{
-                let usage=next("/dashboard/billing/usage")?.ok_or_else(||("计费额度明细不完整，请核对站点版本或在高级设置中选择类型".into(),60))?;
+                let usage=next("/dashboard/billing/usage")?.ok_or_else(||("Billing quota details incomplete; check site version or choose a type in Advanced".into(),60))?;
                 parse_one_api(&value,&usage)
             },
             _=>continue,
         };
         return result.map(|s|(kind,s)).map_err(|e|(e,60));
     }
-    Err(("暂时无法自动识别额度接口，请核对站点地址或在高级设置中手动选择".into(),60))
+    Err(("Can't auto-detect the quota endpoint; check the site URL or choose manually in Advanced".into(),60))
 }
 pub fn detect_cancellable(agent:impl Fn(Duration)->ureq::Agent,base_url:&str,key:&str,cancelled:impl Fn()->bool)->Result<(Kind,Snapshot),(String,u64)>{
     let base=validate_base_url(base_url).map_err(|e|(e,0))?;let key=key.trim();
-    if key.is_empty()||key.len()>8192||key.chars().any(|c|c.is_whitespace()||c.is_control()){return Err(("请输入有效的 API Key".into(),0));}
+    if key.is_empty()||key.len()>8192||key.chars().any(|c|c.is_whitespace()||c.is_control()){return Err(("Enter a valid API key".into(),0));}
     detect_with(|path,timeout|query(&agent(timeout),&format!("{base}{path}"),key,Some(timeout)),cancelled,AUTO_TIMEOUT)
 }
 /// 已保存的协议直接查询；刷新和手动指定类型均不自动切换协议。
 pub fn request_cancellable(agent:&ureq::Agent,kind:Kind,base_url:&str,key:&str,cancelled:impl Fn()->bool)->Result<Snapshot,(String,u64)> {
-    if cancelled(){return Err(("已取消连接".into(),0));}
+    if cancelled(){return Err(("Connection cancelled".into(),0));}
     let base=validate_base_url(base_url).map_err(|e|(e,0))?;
     let key=key.trim();
-    if key.is_empty() || key.len()>8192 || key.chars().any(|c|c.is_whitespace()||c.is_control()) {return Err(("请输入有效的 API Key".into(),0));}
+    if key.is_empty() || key.len()>8192 || key.chars().any(|c|c.is_whitespace()||c.is_control()) {return Err(("Enter a valid API key".into(),0));}
     let result=match kind {
         Kind::NewApi=>parse_new_api(&get(agent,&format!("{base}/api/usage/token/"),key)?),
         Kind::OneApi=>{
             let subscription=get(agent,&format!("{base}/dashboard/billing/subscription"),key)?;
-            if cancelled(){return Err(("已取消连接".into(),0));}
+            if cancelled(){return Err(("Connection cancelled".into(),0));}
             let usage=get(agent,&format!("{base}/dashboard/billing/usage"),key)?;
             parse_one_api(&subscription,&usage)
         }

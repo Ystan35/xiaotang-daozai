@@ -54,9 +54,9 @@ impl Provider {
 
     pub fn label(self) -> &'static str {
         match self {
-            Provider::Feishu => "飞书",
-            Provider::DingTalk => "钉钉",
-            Provider::WeCom => "企业微信",
+            Provider::Feishu => "Feishu",
+            Provider::DingTalk => "DingTalk",
+            Provider::WeCom => "WeCom",
             Provider::ICloud => "iCloud",
             Provider::Custom => "CalDAV",
             Provider::Exchange => "Exchange",
@@ -92,34 +92,34 @@ impl Provider {
     pub fn guide(self) -> [&'static str; 3] {
         match self {
             Provider::Feishu => [
-                "桌面端右上角头像 → 设置",
-                "日历 → CalDAV 同步配置 → 选「其它设备」",
-                "点生成，复制用户名和密码填到上面",
+                "Desktop app: avatar at top right → Settings",
+                "Calendar → CalDAV sync → choose “Other devices”",
+                "Click Generate, then copy the username and password above",
             ],
             Provider::DingTalk => [
-                "打开钉钉 → 日历",
-                "日历设置 → 同步至其他日历 / CalDAV",
-                "生成账号，复制用户名和密码填到上面",
+                "Open DingTalk → Calendar",
+                "Calendar settings → Sync to other calendars / CalDAV",
+                "Generate an account, then copy the username and password above",
             ],
             Provider::WeCom => [
-                "手机端 工作台 → 日程",
-                "右上角「三」→ 日程设置",
-                "同步至其他日历（Exchange）→ 复制完整用户名及生成的密码",
+                "Mobile app: Workbench → Schedule",
+                "“≡” at top right → Schedule settings",
+                "Sync to other calendars (Exchange) → copy the full username and generated password",
             ],
             Provider::ICloud => [
-                "用浏览器打开 account.apple.com，登录 Apple 账户",
-                "登录与安全 → App 专用密码 → 生成一个（名称可填「岛仔」）",
-                "用户名填 Apple ID 邮箱，密码填刚生成的 App 专用密码",
+                "Open account.apple.com in a browser and sign in to your Apple Account",
+                "Sign-In and Security → App-Specific Passwords → generate one (name it “Daozai”)",
+                "Username: your Apple ID email; password: the app-specific password you just made",
             ],
             Provider::Custom => [
-                "服务器填日历服务的 CalDAV 地址，例如 https://example.com/remote.php/dav",
-                "用户名和密码用该服务的账号；支持「应用密码」的建议单独生成一个",
-                "只读同步；岛仔会自动发现账号下所有日历",
+                "Server: your calendar's CalDAV URL, e.g. https://example.com/remote.php/dav",
+                "Use that service's username and password; if it supports app passwords, make a separate one",
+                "Read-only sync; Daozai finds every calendar on the account",
             ],
             Provider::Exchange => [
-                "服务器填 Exchange 邮件服务器地址，例如 mail.example.com，可向公司 IT 获取",
-                "用户名一般是邮箱，也可能是「域\\用户名」；密码用邮箱密码",
-                "只读同步日历；Microsoft 365 / Outlook.com 已不支持密码登录，暂不能连接",
+                "Server: your Exchange mail server, e.g. mail.example.com (ask your IT team)",
+                "Username is usually your email, or “domain\\user”; password is your mail password",
+                "Read-only calendar sync. Microsoft 365 / Outlook.com no longer allow password sign-in, so they can't connect yet",
             ],
         }
     }
@@ -236,12 +236,12 @@ fn save_configs(accounts: &[Config], active: Provider) -> Result<(), String> {
     let accounts: Vec<serde_json::Value> = accounts.iter()
         .map(|cfg| serde_json::from_slice(&encode_config(cfg)).expect("日历配置可以序列化")).collect();
     let data = serde_json::to_vec(&serde_json::json!({"active": active.key(), "accounts": accounts}))
-        .map_err(|e| format!("配置序列化失败：{e}"))?;
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
     let path = config_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败：{e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create config folder: {e}"))?;
     }
-    crate::model::atomic_write(&path, &data).map_err(|e| format!("写配置失败：{e}"))
+    crate::model::atomic_write(&path, &data).map_err(|e| format!("Failed to write config: {e}"))
 }
 
 pub fn select_provider(provider: Provider) -> Result<(), String> {
@@ -259,7 +259,7 @@ pub fn save_connection(cfg: &Config, password: &str, old: Option<&Config>) -> Re
     if let Err(error) = save_config(cfg) {
         if let Some(password) = previous_password {
             if let Err(restore) = secrets::save(cfg, &password) {
-                return Err(format!("{error}；恢复原凭据失败：{restore}"));
+                return Err(format!("{error}; failed to restore the original credentials: {restore}"));
             }
         } else {
             secrets::delete(cfg);
@@ -286,14 +286,14 @@ pub mod secrets {
     /// 凭据只进 Windows 凭据管理器；键是「平台:用户名」，值是密码。
     pub fn save(cfg: &super::Config, password: &str) -> Result<(), String> {
         let entry = keyring::Entry::new(super::SERVICE, &name(cfg))
-            .map_err(|e| format!("凭据管理器不可用：{e}"))?;
-        entry.set_password(password).map_err(|e| format!("保存密码失败：{e}"))
+            .map_err(|e| format!("Credential Manager unavailable: {e}"))?;
+        entry.set_password(password).map_err(|e| format!("Failed to save password: {e}"))
     }
 
     pub fn load(cfg: &super::Config) -> Result<String, String> {
         let entry = keyring::Entry::new(super::SERVICE, &name(cfg))
-            .map_err(|e| format!("凭据管理器不可用：{e}"))?;
-        entry.get_password().map_err(|_| "没有保存密码".to_string())
+            .map_err(|e| format!("Credential Manager unavailable: {e}"))?;
+        entry.get_password().map_err(|_| "No saved password".to_string())
     }
 
     pub fn delete(cfg: &super::Config) {
@@ -310,10 +310,10 @@ pub mod secrets {
 #[cfg(not(windows))]
 pub mod secrets {
     pub fn save(_cfg: &super::Config, _password: &str) -> Result<(), String> {
-        Err("仅 Windows 支持凭据管理器".into())
+        Err("Credential Manager is Windows-only".into())
     }
     pub fn load(_cfg: &super::Config) -> Result<String, String> {
-        Err("仅 Windows 支持凭据管理器".into())
+        Err("Credential Manager is Windows-only".into())
     }
     pub fn delete(_cfg: &super::Config) {}
 }
@@ -329,9 +329,9 @@ pub fn parse_paste(text: &str) -> Option<(String, String)> {
         .replace('：', ":")
         .replace('＝', "=");
     let lower = flat.to_ascii_lowercase();
-    let user_labels = ["用户名", "帐号", "账号", "邮箱", "账户", "username", "user name", "account", "email", "login"];
-    let pass_labels = ["密码", "口令", "password", "pass word", "pwd", "pass"];
-    let skip_labels = ["服务器地址", "服务器", "地址", "server", "url"];
+    let user_labels = ["Username", "帐号", "账号", "Mail", "账户", "username", "user name", "account", "email", "login"];
+    let pass_labels = ["Password", "口令", "password", "pass word", "pwd", "pass"];
+    let skip_labels = ["服务器地址", "Server", "地址", "server", "url"];
 
     let mut marks: Vec<(usize, usize, u8)> = Vec::new(); // (start, end, 0=user 1=pass 2=skip)
     for (kind, labels) in [(0u8, &user_labels[..]), (1u8, &pass_labels[..]), (2u8, &skip_labels[..])] {
@@ -406,15 +406,15 @@ pub struct Failure {
 impl Failure {
     fn status(provider: Provider, code: u16) -> Self {
         let message = match code {
-            401 if provider.custom_server() => "验证账号失败（401），请核对用户名和密码".to_string(),
-            401 => format!("验证账号失败（401），请核对用户名和{}提供的专用密码", provider.label()),
-            403 => "日历服务器拒绝访问（403），请核对同步地址、专用密码及日历授权".to_string(),
-            404 => "服务器地址不对（404）".to_string(),
-            405 => "当前地址不支持日历同步（405），请核对平台提供的 CalDAV 地址".to_string(),
-            407 => "网络需要代理认证（407）".to_string(),
-            429 => "请求太频繁（429），稍后再试".to_string(),
-            500..=599 => format!("服务器出错（{code}），稍后再试"),
-            _ => format!("服务器返回 {code}"),
+            401 if provider.custom_server() => "Sign-in failed (401); check username and password".to_string(),
+            401 => format!("Sign-in failed (401); check the username and the app password from {}", provider.label()),
+            403 => "Calendar server refused access (403); check the sync URL, app password and calendar permission".to_string(),
+            404 => "Wrong server URL (404)".to_string(),
+            405 => "This URL doesn't support calendar sync (405); check the provider's CalDAV URL".to_string(),
+            407 => "Network needs proxy authentication (407)".to_string(),
+            429 => "Too many requests (429); try again later".to_string(),
+            500..=599 => format!("Server error ({code}); try again later"),
+            _ => format!("Server returned {code}"),
         };
         Self { status: Some(code), message, request_url: None,report:None }
     }
@@ -425,12 +425,12 @@ impl Failure {
     }
 
     fn at_stage(mut self, stage: &str) -> Self {
-        if self.status != Some(401) { self.message = format!("{stage}失败，{}", self.message); }
+        if self.status != Some(401) { self.message = format!("{stage} failed, {}", self.message); }
         self
     }
 
     fn transport(_detail: &str) -> Self {
-        Self { status: None, message: "连不上服务器，检查网络".into(), request_url: None,report:None }
+        Self { status: None, message: "Can't reach the server; check the network".into(), request_url: None,report:None }
     }
 
     fn text(message: impl Into<String>) -> Self {
@@ -473,13 +473,13 @@ fn dav_response(
     agent: &ureq::Agent, method: &str, url: &str, depth: &str,
     body: &str, cfg: &Config, password: &str,
 ) -> Result<(String,String), Failure> {
-    let base=url::Url::parse(&cfg.base()).map_err(|_|Failure::text("日历服务器地址无效"))?;
-    let mut target=url::Url::parse(url).map_err(|_|Failure::text("日历地址无效"))?;
+    let base=url::Url::parse(&cfg.base()).map_err(|_|Failure::text("Invalid calendar server URL"))?;
+    let mut target=url::Url::parse(url).map_err(|_|Failure::text("Invalid calendar URL"))?;
     for attempt in 0..4 {
         let local=base.host_str().is_some_and(|host|host.parse::<std::net::IpAddr>().is_ok_and(|ip|ip.is_loopback()));
         if !same_service(cfg.provider,&target,&base) || !target.username().is_empty() || target.password().is_some()
             || !(target.scheme()=="https" || target.scheme()=="http" && local) {
-            return Err(Failure::text("日历返回了不可信地址，请重新连接"));
+            return Err(Failure::text("The calendar returned an untrusted URL; reconnect"));
         }
         let res = agent
         .request(method, target.as_str())
@@ -489,8 +489,8 @@ fn dav_response(
         .send_string(body);
         match res {
             Ok(r) if matches!(r.status(),301|302|303|307|308) && attempt<3 => {
-                target=target.join(r.header("Location").ok_or_else(||Failure::text("日历重定向缺少地址"))?)
-                    .map_err(|_|Failure::text("日历重定向地址无效"))?;
+                target=target.join(r.header("Location").ok_or_else(||Failure::text("Calendar redirect has no URL"))?)
+                    .map_err(|_|Failure::text("Invalid calendar redirect URL"))?;
             }
             Ok(r) if r.status()>=300=>return Err(Failure::status(cfg.provider,r.status()).at_url(&target)),
             Ok(r)=>return r.into_string().map(|xml|(xml,target.to_string())).map_err(|e|Failure::transport(&e.to_string())),
@@ -498,7 +498,7 @@ fn dav_response(
             Err(e)=>return Err(Failure::transport(&e.to_string())),
         }
     }
-    Err(Failure::text("日历重定向次数过多"))
+    Err(Failure::text("Too many calendar redirects"))
 }
 
 /// iCloud 的日历实际放在 `pNN-caldav.icloud.com` 上，发现过程会从入口跳过去；
@@ -554,12 +554,12 @@ impl ReadReport {
     }
     pub fn warning(&self)->String{
         let mut parts=Vec::new();
-        if self.failed>0{parts.push(format!("{} 处日历读取失败",self.failed));}
-        if self.invalid>0{parts.push(format!("{} 条日程无法解析",self.invalid));}
-        if self.unsupported>0{parts.push(format!("{} 条待办等非日程记录已跳过",self.unsupported));}
-        if self.limited{parts.push("已达到读取上限，结果可能不完整".into());}
+        if self.failed>0{parts.push(format!("{} calendar(s) failed to load",self.failed));}
+        if self.invalid>0{parts.push(format!("{} event(s) couldn't be parsed",self.invalid));}
+        if self.unsupported>0{parts.push(format!("{} to-do or other non-event item(s) skipped",self.unsupported));}
+        if self.limited{parts.push("Read limit reached; results may be incomplete".into());}
         if !parts.is_empty(){if let Some(issue)=&self.issue{parts.push(issue.clone());}}
-        parts.join("；")
+        parts.join("; ")
     }
 }
 pub struct ParsedEvents {pub events:Vec<crate::mail::Meeting>,pub report:ReadReport}
@@ -606,18 +606,18 @@ fn fetch_range(cfg: &Config, password: &str, lo: chrono::DateTime<chrono::Utc>, 
     let agent = agent();
     // 每次都发现全部日历：已保存的地址可能指向空日历，会遮蔽同一账号下的其他日历。
     // 逐个查询，单个日历失败不影响其他日历，全部失败才报错。
-    let (calendars,mut report)=discover_calendars(&agent,cfg,password).map_err(|e|e.at_stage("查找日历"))?;
-    let href=calendars.first().cloned().ok_or_else(||Failure::text("没有找到可读取的日历"))?;
+    let (calendars,mut report)=discover_calendars(&agent,cfg,password).map_err(|e|e.at_stage("Finding calendars"))?;
+    let href=calendars.first().cloned().ok_or_else(||Failure::text("No readable calendars found"))?;
     let mut events=Vec::new();
     let mut first_error=None;
     let mut ok=false;
     for collection in &calendars {
         match fetch_collection(&agent,cfg,password,collection,lo,hi) {
             Ok(found)=>{ok=true;events.extend(found.events);report.merge(found.report);}
-            Err(error)=>{report.failed+=1;report.status=report.status.or(error.status);let error=error.at_stage("读取日程");report.problem(error.message.clone());first_error.get_or_insert(error);}
+            Err(error)=>{report.failed+=1;report.status=report.status.or(error.status);let error=error.at_stage("Reading events");report.problem(error.message.clone());first_error.get_or_insert(error);}
         }
     }
-    if !ok {return Err(first_error.unwrap_or_else(||Failure::text("没有找到日历")).with_report(report));}
+    if !ok {return Err(first_error.unwrap_or_else(||Failure::text("No calendars found")).with_report(report));}
     if events.is_empty() && report.invalid>0{return Err(Failure::text(report.warning()).with_report(report));}
     events.sort_by_key(|m|m.start);
     let mut seen=std::collections::HashSet::new();events.retain(|m|seen.insert(dedupe_key(m)));
@@ -648,7 +648,7 @@ fn fetch_collection(agent:&ureq::Agent,cfg:&Config,password:&str,href:&str,lo:ch
         xml=dav(&agent,"REPORT",&href,"1",&body,cfg,password)?;
         has_data=calendar_data(&xml).iter().any(|data|!data.trim().is_empty());
         if !has_data && report_status_error(&xml).is_none() {
-            return Err(Failure::text("服务器未返回日程内容，请检查日历读取权限"));
+            return Err(Failure::text("The server returned no events; check calendar read permission"));
         }
     }
     let ParsedEvents{events,mut report}=parse_events_in_range(&xml,lo,hi);
@@ -660,12 +660,12 @@ fn fetch_collection(agent:&ureq::Agent,cfg:&Config,password:&str,href:&str,lo:ch
 }
 
 fn report_resource_refs(xml:&str,href:&str)->Result<String,Failure> {
-    let base=url::Url::parse(href).map_err(|_|Failure::text("日历地址无效"))?;
+    let base=url::Url::parse(href).map_err(|_|Failure::text("Invalid calendar URL"))?;
     let mut refs=String::new();
     for (resource,is_calendar,_) in responses(xml) {
-        let target=base.join(&resource).map_err(|_|Failure::text("日程地址无效"))?;
+        let target=base.join(&resource).map_err(|_|Failure::text("Invalid event URL"))?;
         if target.origin()!=base.origin() || !target.username().is_empty() || target.password().is_some() {
-            return Err(Failure::text("日历返回了不可信地址，请重新连接"));
+            return Err(Failure::text("The calendar returned an untrusted URL; reconnect"));
         }
         if is_calendar || target.path().trim_end_matches('/')==base.path().trim_end_matches('/') {continue;}
         let escaped=target[url::Position::BeforePath..url::Position::AfterQuery].replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;");
@@ -689,7 +689,7 @@ fn discover_calendars(agent: &ureq::Agent, cfg: &Config, password: &str) -> Resu
             return Ok(calendar);
         }
     }
-    Err(Failure::text("没有找到日历，请确认这个账号能在客户端里同步日程"))
+    Err(Failure::text("No calendars found; make sure this account syncs events in its own app"))
 }
 
 fn discover_at(agent:&ureq::Agent,cfg:&Config,password:&str,start:&str,depth:&str)->Result<Option<(Vec<String>,ReadReport)>,Failure>{
@@ -732,7 +732,7 @@ fn discover_at(agent:&ureq::Agent,cfg:&Config,password:&str,start:&str,depth:&st
     }
     if !queue.is_empty(){report.limited=true;}
     report.calendars=found.len();
-    if found.is_empty(){if let Some(error)=first_error{Err(error.with_report(report))}else if report.limited{Err(Failure::text("日历服务发现次数过多，请重新连接").with_report(report))}else{Ok(None)}}else{Ok(Some((found,report)))}
+    if found.is_empty(){if let Some(error)=first_error{Err(error.with_report(report))}else if report.limited{Err(Failure::text("Too many calendar discovery steps; reconnect").with_report(report))}else{Ok(None)}}else{Ok(Some((found,report)))}
 }
 
 // ---------------------------------------------------------------- XML
@@ -790,7 +790,7 @@ fn calendar_collections(xml:&str,base:&str)->Vec<String>{
 
 #[cfg(test)]
 fn discover(agent:&ureq::Agent,cfg:&Config,password:&str)->Result<String,Failure>{
-    discover_calendars(agent,cfg,password)?.0.into_iter().next().ok_or_else(||Failure::text("没有找到日历"))
+    discover_calendars(agent,cfg,password)?.0.into_iter().next().ok_or_else(||Failure::text("No calendars found"))
 }
 
 /// 只选择日历集合或已有的 UUID 兼容路径，不能把主目录/收件箱当成日历。
@@ -845,7 +845,7 @@ pub fn events_from_ics(ics: &str, lo: chrono::DateTime<chrono::Utc>, hi: chrono:
 }
 
 pub fn inspect_ics(ics:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::DateTime<chrono::Utc>)->Result<ParsedEvents,String>{
-    if !ical_lines(ics).iter().any(|line|matches!(line.as_str(),"BEGIN:VCALENDAR"|"BEGIN:VEVENT")){return Err("不是有效的日历文件（.ics）".into());}
+    if !ical_lines(ics).iter().any(|line|matches!(line.as_str(),"BEGIN:VCALENDAR"|"BEGIN:VEVENT")){return Err("Not a valid calendar file (.ics)".into());}
     let escaped = ics.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let xml = format!("<d:response><c:calendar-data>{escaped}</c:calendar-data></d:response>");
     Ok(parse_events_in_range(&xml,lo,hi))
@@ -942,7 +942,7 @@ fn parse_events_in_range(xml:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::Da
             "END:VEVENT"=>if let Some(body)=body.take(){blocks.push(body);},
             _=>if let Some(body)=&mut body{body.push_str(&line);body.push('\n');},
         }}
-        if body.is_some(){report.invalid+=1;report.problem("日程内容不完整");}
+        if body.is_some(){report.invalid+=1;report.problem("Event data incomplete");}
     }
     let field=|body:&str,name:&str|{
         let mut nested=0;
@@ -960,7 +960,7 @@ fn parse_events_in_range(xml:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::Da
         let valid_start=cancelled(body)||!crate::mail::meetings_of(&format!("BEGIN:VEVENT\n{body}END:VEVENT")).is_empty();
         if id.contains("RANGE=")||at.is_none()||!valid_start{
             if let Some(uid)=field(body,"UID"){invalid_series.insert(uid);}
-            report.problem("部分重复日程的修改规则或时间暂无法解析");
+            report.problem("Some recurring-event exceptions or times couldn't be parsed");
         }else{overrides.insert((field(body,"UID").unwrap_or_default(),at.unwrap()));}
     }}
     let mut events=Vec::new();
@@ -978,7 +978,7 @@ fn parse_events_in_range(xml:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::Da
         if field(&body,"UID").is_some_and(|uid|invalid_series.contains(&uid)){report.invalid+=1;continue;}
         if cancelled(&body){report.cancelled+=1;continue;}
         let Some(base)=crate::mail::meetings_of(&format!("BEGIN:VEVENT\n{body}END:VEVENT")).into_iter().next()else{
-            report.invalid+=1;report.problem("部分日程的时间或时区无法解析");continue;
+            report.invalid+=1;report.problem("Some event times or time zones couldn't be parsed");continue;
         };
         if field(&body,"RECURRENCE-ID").is_some()||field(&body,"RRULE").is_none(){
             if (field(&body,"RECURRENCE-ID").is_some()||!overrides.contains(&(field(&body,"UID").unwrap_or_default(),base.start))) && !add_event(base,&mut report){break;}
@@ -989,7 +989,7 @@ fn parse_events_in_range(xml:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::Da
             if line.starts_with("BEGIN:"){nested+=1;continue;}if line.starts_with("END:"){nested-=1;continue;}
             if nested==0 && matches!(line.split([';',':']).next(),Some("DTSTART"|"RRULE"|"RDATE"|"EXDATE")){rules.push(line);}
         }
-        let Ok(set)=rules.join("\n").parse::<rrule::RRuleSet>()else{report.invalid+=1;report.problem("部分日程的重复规则无法解析");continue;};
+        let Ok(set)=rules.join("\n").parse::<rrule::RRuleSet>()else{report.invalid+=1;report.problem("Some recurrence rules couldn't be parsed");continue;};
         let duration=base.end.map_or(0,|end|end-base.start);
         let result=set.after((lo-chrono::Duration::seconds(duration.max(1))).with_timezone(&rrule::Tz::UTC)).before(hi.with_timezone(&rrule::Tz::UTC)).all(2000);
         report.limited|=result.limited;if result.dates.is_empty(){report.outside+=1;}
@@ -997,7 +997,7 @@ fn parse_events_in_range(xml:&str,lo:chrono::DateTime<chrono::Utc>,hi:chrono::Da
         for date in result.dates{
             let start=date.timestamp();if overrides.contains(&(uid.clone(),start)){continue;}
             let mut event=base.clone();event.start=start;event.end=base.end.map(|end|start+end-base.start);
-            event.at=date.with_timezone(&chrono::Local).format(if event.all_day{"%m-%d 全天"}else{"%m-%d %H:%M"}).to_string();
+            event.at=date.with_timezone(&chrono::Local).format(if event.all_day{"%m-%d all day"}else{"%m-%d %H:%M"}).to_string();
             if !add_event(event,&mut report){break 'blocks;}
         }
     }
@@ -1131,7 +1131,7 @@ fn run_with(cmd_rx: Receiver<Cmd>, ev: Sender<Event>, interval: Duration, mut sy
                                 let mut saved = c.clone();
                                 saved.href = Some(f.href);
                                 let warning=f.report.warning();
-                                (true,if warning.is_empty(){"连接成功".into()}else{format!("部分日程未同步：{warning}")}, f.events.len(), Some(saved))
+                                (true,if warning.is_empty(){"Connected".into()}else{format!("Some events not synced: {warning}")}, f.events.len(), Some(saved))
                             }
                             Err(e) => (false, e.message, 0, None),
                         };
@@ -1159,7 +1159,7 @@ fn sync_once(
         Ok(p) => p,
         Err(e) => {
             // 没配置凭据：静默，只记日志。
-            eprintln!("[calendar] 凭据不可用：{e}");
+            eprintln!("[calendar] credentials unavailable: {e}");
             let _ = ev.send(Event::Failed { config:cfg.clone(),message: e.clone() });
             if let Some(month) = month { let _ = ev.send(Event::MonthLoaded { config: cfg.clone(), month, result: Err(e) }); }
             return;
@@ -1172,7 +1172,7 @@ fn sync_once(
             let _ = ev.send(Event::Warning{config:cfg.clone(),month:None,message:warning});
         }
         Err(e) => {
-            eprintln!("[calendar] 同步失败：{}", e.message);
+            eprintln!("[calendar] sync failed: {}", e.message);
             let _ = ev.send(Event::Failed { config:cfg.clone(),message: e.message });
         }
     }

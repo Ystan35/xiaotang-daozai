@@ -8,7 +8,7 @@ fn write_report(directory: &Path, title: &str, details: &str) -> std::io::Result
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     std::fs::write(&path, format!(
-        "岛仔 {}\n系统：{} / {}\n时间（Unix 秒）：{timestamp}\n{title}\n{details}\n",
+        "Daozai {}\nSystem: {} / {}\nTime (Unix s): {timestamp}\n{title}\n{details}\n",
         env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH,
     ))?;
     Ok(path)
@@ -16,8 +16,8 @@ fn write_report(directory: &Path, title: &str, details: &str) -> std::io::Result
 
 fn message(directory: &Path, title: &str, details: &str) -> String {
     match write_report(directory, title, details) {
-        Ok(path) => format!("{title}\n\n请将以下日志发给开发者，帮助定位问题：\n{}", path.display()),
-        Err(error) => format!("{title}\n\n{details}\n\n日志无法保存：{error}\n请截图反馈。"),
+        Ok(path) => format!("{title}\n\nPlease send this log to the developer to help find the problem:\n{}", path.display()),
+        Err(error) => format!("{title}\n\n{details}\n\nCouldn't save the log: {error}\nPlease send a screenshot."),
     }
 }
 
@@ -28,7 +28,7 @@ pub fn report(title: &str, details: &str) {
         use windows::core::{w, PCWSTR};
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
         let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
-        unsafe { MessageBoxW(None, PCWSTR(wide.as_ptr()), w!("岛仔"), MB_OK | MB_ICONERROR); }
+        unsafe { MessageBoxW(None, PCWSTR(wide.as_ptr()), w!("Daozai"), MB_OK | MB_ICONERROR); }
     }
     #[cfg(not(windows))]
     eprintln!("{text}");
@@ -39,17 +39,17 @@ pub fn startup(stage:&str) {
     let directory=daozai::model::config_dir().join("diagnostics");
     if std::fs::create_dir_all(&directory).is_ok() {
         let _=std::fs::write(directory.join("last-startup.log"),format!(
-            "岛仔 {}\n进程：{}\n启动阶段：{stage}\n",env!("CARGO_PKG_VERSION"),std::process::id()));
+            "Daozai {}\nProcess: {}\nStartup stage: {stage}\n",env!("CARGO_PKG_VERSION"),std::process::id()));
     }
 }
 
 /// 记录实际使用的图形设备，避免把电脑里的显卡列表误当作当前渲染设备。
 pub fn graphics(cc:&eframe::CreationContext<'_>) {
     use eframe::glow::HasContext;
-    let details=if let Some(gl)=&cc.gl {unsafe{format!("厂商：{}\n渲染器：{}\nOpenGL：{}\n",
+    let details=if let Some(gl)=&cc.gl {unsafe{format!("Vendor: {}\nRenderer: {}\nOpenGL: {}\n",
         gl.get_parameter_string(eframe::glow::VENDOR),gl.get_parameter_string(eframe::glow::RENDERER),gl.get_parameter_string(eframe::glow::VERSION))}}
     else if let Some(state)=&cc.wgpu_render_state {
-        let info=state.adapter.get_info();format!("渲染器：{}\n图形后端：{:?}\n设备类型：{:?}\n",info.name,info.backend,info.device_type)
+        let info=state.adapter.get_info();format!("Renderer: {}\nGraphics backend: {:?}\nDevice type: {:?}\n",info.name,info.backend,info.device_type)
     }else{return;};
     let directory=daozai::model::config_dir().join("diagnostics");
     if std::fs::create_dir_all(&directory).is_ok(){let _=std::fs::write(directory.join("last-graphics.log"),details);}
@@ -87,7 +87,7 @@ fn relaunch_after_failure(reason: &str) -> bool {
     let mut lines: Vec<&str> = history.lines().collect();
     if lines.len() > 19 { lines.drain(..lines.len() - 19); }
     let reason: String = reason.chars().filter(|c| !c.is_control()).take(160).collect();
-    let entry = format!("{now} 运行 {} 秒后{reason}，已自动重启", uptime.as_secs());
+    let entry = format!("{now} after running {} s: {reason}; restarted automatically", uptime.as_secs());
     lines.push(&entry);
     let _ = std::fs::create_dir_all(diagnostics_dir());
     let _ = std::fs::write(&path, lines.join("\n") + "\n");
@@ -128,7 +128,7 @@ mod native_crash {
     unsafe fn module_at(address: usize) -> (String, usize) {
         let mut module = HMODULE::default();
         let flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
-        if GetModuleHandleExW(flags, windows::core::PCWSTR(address as *const u16), &mut module).is_err() { return ("未知模块".into(), address); }
+        if GetModuleHandleExW(flags, windows::core::PCWSTR(address as *const u16), &mut module).is_err() { return ("unknown module".into(), address); }
         let mut name = [0u16; 520];
         let length = GetModuleFileNameW(module, &mut name) as usize;
         let path = String::from_utf16_lossy(&name[..length.min(name.len())]);
@@ -143,15 +143,15 @@ mod native_crash {
         let (module, offset) = module_at(record.ExceptionAddress as usize);
         let uptime = super::STARTED.get().map(|at| at.elapsed().as_secs()).unwrap_or(0);
         let gl_driver = daozai::renderer::is_gl_driver(&module);
-        let renderer = if daozai::renderer::compat_active() { "兼容渲染（Direct3D 12）" } else { "OpenGL" };
-        let mut details = format!("异常代码：{code:#010x}\n崩溃模块：{module}\n模块内偏移：{offset:#x}\n已运行：{uptime} 秒\n渲染方式：{renderer}\n");
+        let renderer = if daozai::renderer::compat_active() { "Compatibility rendering (Direct3D 12)" } else { "OpenGL" };
+        let mut details = format!("Exception code: {code:#010x}\nCrashed module: {module}\nOffset in module: {offset:#x}\nUptime: {uptime} s\nRenderer: {renderer}\n");
         if gl_driver && !daozai::renderer::compat_active() {
             daozai::renderer::request_fallback(&module);
-            details.push_str("判断：崩在显卡的 OpenGL 驱动里，下次启动自动改用兼容渲染（Direct3D 12）。\n");
+            details.push_str("Diagnosis: crashed in the GPU's OpenGL driver; next launch will use compatible rendering (Direct3D 12).\n");
         }
-        let restarted = super::relaunch_after_failure(&format!("进程崩溃（{module}）"));
-        details.push_str(if restarted { "已自动重新启动岛仔。\n" } else { "未自动重启（运行不足 30 秒或一小时内已重启 3 次）。\n" });
-        let _ = super::write_report(&super::diagnostics_dir(), "岛仔意外退出（进程崩溃）", &details);
+        let restarted = super::relaunch_after_failure(&format!("Process crashed ({module})"));
+        details.push_str(if restarted { "Daozai was restarted automatically.\n" } else { "Not restarted (ran under 30 s, or restarted 3 times within an hour).\n" });
+        let _ = super::write_report(&super::diagnostics_dir(), "Daozai quit unexpectedly (crash)", &details);
         // 交给系统继续处理，Windows 事件日志里仍会留下崩溃记录。
         EXCEPTION_CONTINUE_SEARCH
     }
@@ -176,14 +176,14 @@ pub fn install() {
     std::panic::set_hook(Box::new(|info| {
         // 不写入 panic 的数据载荷，避免把邮件、凭据或登录信息带进日志。
         let location = info.location().map(|p| format!("{}:{}:{}", p.file(), p.line(), p.column()))
-            .unwrap_or_else(|| "未知".into());
-        let details = format!("代码位置：{location}\n调用栈：\n{}", std::backtrace::Backtrace::force_capture());
+            .unwrap_or_else(|| "Unknown".into());
+        let details = format!("Location: {location}\nBacktrace:\n{}", std::backtrace::Backtrace::force_capture());
         // 主线程出错会让整个岛仔退出：记下原因后直接自动重启，不弹窗打断。后台线程出错不影响主界面，仍按原样提示。
-        if std::thread::current().name() == Some("main") && relaunch_after_failure("程序异常") {
-            let _ = write_report(&diagnostics_dir(), "岛仔发生异常，已自动重新启动。", &details);
+        if std::thread::current().name() == Some("main") && relaunch_after_failure("Program error") {
+            let _ = write_report(&diagnostics_dir(), "Daozai hit an error and restarted automatically.", &details);
             return;
         }
-        report("岛仔发生异常，请重新启动。", &details);
+        report("Daozai hit an error; please restart it.", &details);
     }));
 }
 

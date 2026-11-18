@@ -45,7 +45,7 @@ pub fn run(mut options:eframe::NativeOptions,mut launch:impl FnMut(eframe::Nativ
     };
     daozai::renderer::set_compat_active(true);
     launch_compatible(fallback_options,&mut launch).map_err(|fallback|eframe::Error::AppCreation(format!(
-        "OpenGL 初始化失败：{error}\n兼容图形后端也无法启动：{fallback}\n请安装电脑厂商提供的显卡驱动后重试。"
+        "OpenGL failed to start: {error}\nThe compatible graphics backend also failed: {fallback}\nInstall the GPU driver from your PC maker and try again."
     ).into()))
 }
 

@@ -36,7 +36,7 @@ pub fn apply_pending_fallback() -> Option<String> {
     if settings.render_compat { return None; }
     let when = chrono::Local::now().format("%m-%d %H:%M");
     settings.render_compat = true;
-    settings.render_compat_reason = format!("{when} 显卡的 OpenGL 驱动（{module}）崩溃，已自动切换");
+    settings.render_compat_reason = format!("{when} the GPU's OpenGL driver ({module}) crashed; switched automatically");
     settings.save();
     Some(settings.render_compat_reason)
 }

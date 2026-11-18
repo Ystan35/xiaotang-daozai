@@ -4,8 +4,8 @@ use serde_json::{json,Value};
 use std::{fs,io::ErrorKind,net::{Ipv4Addr,SocketAddr,TcpStream},sync::atomic::{AtomicBool,Ordering},time::{Duration,Instant}};
 use tungstenite::{client::client_with_config,handshake::HandshakeError,protocol::WebSocketConfig,Error,Message,WebSocket};
 
-const ERROR:&str="Chrome 授权未完成或连接已断开，请重新连接";
-const CANCEL:&str="已取消 Gemini 连接";
+const ERROR:&str="Chrome authorization unfinished or disconnected; reconnect";
+const CANCEL:&str="Gemini connection cancelled";
 const MAX:usize=1024*1024;
 const EMAIL_SCRIPT:&str=r#"(()=>{if(location.origin!=='https://gemini.google.com'||!/^\/(?:u\/\d+\/)?usage\/?$/.test(location.pathname))return '';const a=document.querySelector('a[href^="https://accounts.google.com/SignOutOptions"][aria-label]')||document.querySelector('a[aria-label*="@"]');return(a?.getAttribute('aria-label')||'').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||''})()"#;
 
@@ -25,7 +25,7 @@ fn check(cancel:&AtomicBool,deadline:Instant,timeout:&str)->Result<(),String>{
 struct Socket {socket:WebSocket<TcpStream>,next:u32}
 impl Socket {
     fn open(endpoint:&Endpoint,cancel:&AtomicBool,timeout:Duration)->Result<Self,String>{
-        let deadline=Instant::now()+timeout;check(cancel,deadline,"等待 Chrome 授权超时，请重新连接")?;
+        let deadline=Instant::now()+timeout;check(cancel,deadline,"Chrome authorization timed out; reconnect")?;
         let stream=TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST,endpoint.port)),Duration::from_secs(2)).map_err(|_|ERROR)?;
         stream.set_nonblocking(true).map_err(|_|ERROR)?;
         let config=WebSocketConfig::default().max_message_size(Some(MAX)).max_frame_size(Some(MAX));
@@ -34,7 +34,7 @@ impl Socket {
             Ok((socket,_))=>return Ok(Self{socket,next:0}),
             Err(HandshakeError::Failure(_))=>return Err(ERROR.into()),
             Err(HandshakeError::Interrupted(pending))=>{
-                check(cancel,deadline,"等待 Chrome 授权超时，请重新连接")?;
+                check(cancel,deadline,"Chrome authorization timed out; reconnect")?;
                 std::thread::sleep(Duration::from_millis(20));handshake=pending.handshake();
             }
         }}
@@ -87,30 +87,30 @@ fn cookie_header(value:&Value)->Result<String,String>{
 pub(super) fn login(address:&str,cancel:&AtomicBool)->Result<Session,String>{
     let target=if address.trim().is_empty(){None}else{Some(email(address)?)};
     let path=std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).ok_or(ERROR)?.join("Google/Chrome/User Data/DevToolsActivePort");
-    let endpoint=fs::read_to_string(path).ok().and_then(|raw|Endpoint::parse(&raw)).ok_or("请先打开 Chrome，并在 chrome://inspect/#remote-debugging 开启原生连接")?;
+    let endpoint=fs::read_to_string(path).ok().and_then(|raw|Endpoint::parse(&raw)).ok_or("Open Chrome and enable native connection at chrome://inspect/#remote-debugging")?;
     login_at(&endpoint,target,cancel)
 }
 fn login_at(endpoint:&Endpoint,target:Option<String>,cancel:&AtomicBool)->Result<Session,String>{
     let mut socket=Socket::open(endpoint,cancel,Duration::from_secs(300))?;
     let result=socket.call("Target.getTargets",json!({}),None,cancel)?;
     let pages=result["targetInfos"].as_array().ok_or(ERROR)?.iter().filter(|t|t["type"]=="page"&&gemini_page(t["url"].as_str().unwrap_or_default())).collect::<Vec<_>>();
-    if pages.is_empty(){return Err("请先在 Chrome 打开 gemini.google.com/usage 并登录".into());}
-    if pages.len()>1&&target.is_none(){return Err("有多个 Gemini 用量页，请填写要连接的 Google 邮箱".into());}
+    if pages.is_empty(){return Err("Open gemini.google.com/usage in Chrome and sign in first".into());}
+    if pages.len()>1&&target.is_none(){return Err("Several Gemini usage pages are open; enter the Google email to connect".into());}
     for page in pages{
         let result=socket.call("Target.attachToTarget",json!({"targetId":page["targetId"],"flatten":true}),None,cancel)?;
         let session=result["sessionId"].as_str().ok_or(ERROR)?;
         let current=socket.identity(session,cancel)?;
         let Some(current)=current.filter(|email|target.as_ref().is_none_or(|wanted|wanted==email)) else{
-            if target.is_none(){return Err("请先在 Chrome 的 Gemini 用量页完成 Google 登录".into());}
+            if target.is_none(){return Err("Finish Google sign-in on the Gemini usage page in Chrome first".into());}
             socket.call("Target.detachFromTarget",json!({"sessionId":session}),None,cancel)?;
             continue;
         };
         let result=socket.call("Network.getCookies",json!({"urls":["https://gemini.google.com/"]}),Some(session),cancel)?;
         let header=cookie_header(&result)?;
-        if socket.identity(session,cancel)?.as_ref()!=Some(&current){return Err("Google 账号在连接期间发生切换，请重新连接".into());}
+        if socket.identity(session,cancel)?.as_ref()!=Some(&current){return Err("The Google account changed while connecting; reconnect".into());}
         return Ok(Session{email:current,cookie:header});
     }
-    Err("未找到此 Google 账号的 Gemini 用量页，请在 Chrome 切回原账号".into())
+    Err("No Gemini usage page for this Google account; switch back in Chrome".into())
 }
 
 #[cfg(test)]

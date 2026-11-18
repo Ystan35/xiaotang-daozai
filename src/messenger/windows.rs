@@ -29,7 +29,7 @@ pub(crate) fn frame_style(class:&str,style:u32,extended:u32)->bool{
     (style&frame==frame || (class.starts_with("Qt") || class=="Chrome_WidgetWin_1") && style&resizable==resizable)
         && extended&(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE).0==0
 }
-pub fn describe_foreground()->String{unsafe{let window=GetForegroundWindow();format!("{:#x} {} 进程 {}",window.0 as usize,class_name(window),window_pid(window))}}
+pub fn describe_foreground()->String{unsafe{let window=GetForegroundWindow();format!("{:#x} {} process {}",window.0 as usize,class_name(window),window_pid(window))}}
 pub fn trace(line:impl AsRef<str>){crate::resources::append_log(&crate::model::config_dir().join("diagnostics"),"messenger-events",line.as_ref());}
 
 pub(crate) fn normalized(path: &str) -> String {
@@ -284,15 +284,15 @@ impl Runtime {
             let enabled=(entry.client.adapter().enabled)(settings);
             let status=if !enabled || !settings.notifications{
                 entry.source=None;entry.retry=None;
-                if enabled{"未在监听 · 提醒总开关已关闭".to_string()}else{String::new()}
+                if enabled{"Not listening · alerts are turned off".to_string()}else{String::new()}
             }else{
                 if entry.source.is_none() && entry.retry.is_none_or(|at|at.elapsed()>=Duration::from_secs(10)){
                     match (entry.client.adapter().native.taskbar.unwrap())(ctx.clone()){
                         Ok(source)=>{entry.source=Some(source);entry.retry=None;}
-                        Err(error)=>{entry.retry=Some(Instant::now());entry.status=format!("{error} · 10 秒后重试");events.push(TaskbarEvent::Status(entry.client,entry.status.clone()));}
+                        Err(error)=>{entry.retry=Some(Instant::now());entry.status=format!("{error} · retrying in 10 s");events.push(TaskbarEvent::Status(entry.client,entry.status.clone()));}
                     }
                 }
-                if entry.source.is_some(){format!("正在监听 · {}任务栏闪动时提醒",entry.client.name())}else{entry.status.clone()}
+                if entry.source.is_some(){format!("Listening · alerts when {} flashes in the taskbar",entry.client.name())}else{entry.status.clone()}
             };
             if entry.status!=status{entry.status=status.clone();events.push(TaskbarEvent::Status(entry.client,status));}
             if let Some(source)=&entry.source{

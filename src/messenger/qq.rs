@@ -18,7 +18,7 @@ fn open(unread:Unread,paths:&[String],_:bool)->Result<(),OpenError>{unsafe{
         let icons=host_icons(&[(unread.pid,window)],unread.pid);
         if let [(_,id)]=icons.as_slice(){
             for event in [WM_LBUTTONDOWN,WM_LBUTTONUP,WM_LBUTTONDBLCLK,WM_LBUTTONUP]{
-                PostMessageW(window,WM_APP+1,WPARAM(*id as usize),LPARAM(event as isize)).map_err(|_|OpenError::Failed("QQ 托盘暂时无法响应".into()))?;
+                PostMessageW(window,WM_APP+1,WPARAM(*id as usize),LPARAM(event as isize)).map_err(|_|OpenError::Failed("QQ tray isn't responding right now".into()))?;
             }
             return Ok(());
         }
