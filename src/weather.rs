@@ -41,31 +41,31 @@ pub fn kind(code: u8, day: bool) -> Kind {
 /// WMO 天气代码 → 中文描述。
 pub fn describe(code: u8) -> &'static str {
     match code {
-        0 => "晴",
-        1 => "晴间多云",
-        2 => "多云",
-        3 => "阴",
-        45 | 48 => "雾",
-        51 => "毛毛雨",
-        53 => "毛毛雨",
-        55 => "强毛毛雨",
-        56 | 57 | 66 | 67 => "冻雨",
-        61 => "小雨",
-        63 => "中雨",
-        65 => "大雨",
-        71 => "小雪",
-        73 => "中雪",
-        75 => "大雪",
-        77 => "米雪",
-        80 => "阵雨",
-        81 => "强阵雨",
-        82 => "暴雨",
-        85 => "阵雪",
-        86 => "强阵雪",
-        95 => "雷阵雨",
-        97 => "强雷阵雨",
-        96 | 99 => "雷暴伴冰雹",
-        _ => "多云",
+        0 => "Clear",
+        1 => "Partly cloudy",
+        2 => "Cloudy",
+        3 => "Overcast",
+        45 | 48 => "Fog",
+        51 => "Drizzle",
+        53 => "Drizzle",
+        55 => "Heavy drizzle",
+        56 | 57 | 66 | 67 => "Freezing rain",
+        61 => "Light rain",
+        63 => "Rain",
+        65 => "Heavy rain",
+        71 => "Light snow",
+        73 => "Snow",
+        75 => "Heavy snow",
+        77 => "Snow grains",
+        80 => "Showers",
+        81 => "Heavy showers",
+        82 => "Violent showers",
+        85 => "Snow showers",
+        86 => "Heavy snow showers",
+        95 => "Thunderstorm",
+        97 => "Strong thunderstorm",
+        96 | 99 => "Thunderstorm with hail",
+        _ => "Cloudy",
     }
 }
 
@@ -162,12 +162,12 @@ impl Position {
 }
 
 fn json(response: ureq::Response) -> Result<Value, String> {
-    serde_json::from_reader(response.into_reader().take(1024 * 1024)).map_err(|_| "天气响应格式无效".to_string())
+    serde_json::from_reader(response.into_reader().take(1024 * 1024)).map_err(|_| "Invalid weather response".to_string())
 }
 
 fn get(agent: &ureq::Agent, url: &url::Url) -> Result<Value, String> {
     agent.get(url.as_str()).set("Accept", "application/json").call()
-        .map_err(|error| match error { ureq::Error::Status(code, _) => format!("服务返回 {code}"), _ => "网络不可用".to_string() })
+        .map_err(|error| match error { ureq::Error::Status(code, _) => format!("Service returned {code}"), _ => "No network".to_string() })
         .and_then(json)
 }
 
@@ -181,18 +181,18 @@ fn http_agent() -> ureq::Agent {
 
 /// 按网络出口定位；国内常见出口能拿到中文城市名。
 pub fn locate(agent: &ureq::Agent) -> Result<Position, String> {
-    let url = url::Url::parse("https://ipwho.is/?lang=zh-CN").map_err(|_| "定位服务地址无效")?;
+    let url = url::Url::parse("https://ipwho.is/?lang=zh-CN").map_err(|_| "Invalid location service URL")?;
     let value = get(agent, &url)?;
-    if !value["success"].as_bool().unwrap_or(false) { return Err("自动定位失败，请在设置里填写城市".into()); }
-    let lat = value["latitude"].as_f64().ok_or("定位结果缺少坐标")?;
-    let lon = value["longitude"].as_f64().ok_or("定位结果缺少坐标")?;
+    if !value["success"].as_bool().unwrap_or(false) { return Err("Auto location failed; enter a city in settings".into()); }
+    let lat = value["latitude"].as_f64().ok_or("Location result has no coordinates")?;
+    let lon = value["longitude"].as_f64().ok_or("Location result has no coordinates")?;
     let label = value["city"].as_str().filter(|s| !s.trim().is_empty())
         .or_else(|| value["region"].as_str().filter(|s| !s.trim().is_empty()))
         .or_else(|| value["country"].as_str().filter(|s| !s.trim().is_empty()))
-        .unwrap_or("当地").trim().to_string();
+        .unwrap_or("Local").trim().to_string();
     let region=value["region"].as_str().unwrap_or_default().to_string();
     let position=Position { lat, lon, label, region };
-    if !position.valid() {return Err("定位结果坐标无效".into());}
+    if !position.valid() {return Err("Location result has invalid coordinates".into());}
     Ok(position)
 }
 
@@ -285,8 +285,8 @@ pub fn search_cities(agent: &ureq::Agent, name: &str) -> Result<Vec<Position>, S
     let mut found=Vec::new();
     let mut error=None;
     for query in city_queries(name) {
-        let mut url=url::Url::parse("https://geocoding-api.open-meteo.com/v1/search").map_err(|_|"定位服务地址无效")?;
-        url.query_pairs_mut().append_pair("name",&query).append_pair("count","10").append_pair("language","zh").append_pair("format","json");
+        let mut url=url::Url::parse("https://geocoding-api.open-meteo.com/v1/search").map_err(|_|"Invalid location service URL")?;
+        url.query_pairs_mut().append_pair("name",&query).append_pair("count","10").append_pair("language","en").append_pair("format","json");
         match get(agent,&url) {
             Ok(value)=>found.extend(city_candidates(&value)),
             Err(message)=>error=Some(message),
@@ -298,9 +298,9 @@ pub fn search_cities(agent: &ureq::Agent, name: &str) -> Result<Vec<Position>, S
 
 fn unique_city(mut candidates: Vec<Position>, name: &str) -> Result<Position, String> {
     match candidates.len() {
-        0=>Err(format!("没找到「{name}」，请试试完整市名或英文名")),
+        0=>Err(format!("Couldn't find “{name}”; try the full city name")),
         1=>Ok(candidates.remove(0)),
-        _=>Err(format!("「{name}」有多个同名地点，请在设置的下拉列表中选择具体地区")),
+        _=>Err(format!("Several places are called “{name}”; pick one from the list in settings")),
     }
 }
 
@@ -323,7 +323,7 @@ fn fetch_at(agent: &ureq::Agent, city: &str, selected: Option<&Position>) -> Res
 
 /// 已知坐标时只请求一次预报接口。
 fn fetch_forecast(agent: &ureq::Agent, position: Position) -> Result<Snapshot, String> {
-    let mut url = url::Url::parse("https://api.open-meteo.com/v1/forecast").map_err(|_| "天气服务地址无效")?;
+    let mut url = url::Url::parse("https://api.open-meteo.com/v1/forecast").map_err(|_| "Invalid weather service URL")?;
     {
         let mut query = url.query_pairs_mut();
         query.append_pair("latitude", &format!("{:.4}", position.lat));
@@ -341,17 +341,17 @@ fn fetch_forecast(agent: &ureq::Agent, position: Position) -> Result<Snapshot, S
 fn day_label(index: usize, date: &str) -> String {
     use chrono::Datelike;
     match index {
-        0 => "今天".into(),
-        1 => "明天".into(),
+        0 => "Today".into(),
+        1 => "Tomorrow".into(),
         _ => chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-            .map(|d| format!("周{}", ["一", "二", "三", "四", "五", "六", "日"][d.weekday().num_days_from_monday() as usize]))
+            .map(|d| ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d.weekday().num_days_from_monday() as usize].to_string())
             .unwrap_or_else(|_| date.get(5..).unwrap_or("").to_string()),
     }
 }
 
 pub fn parse(place: &str, value: &Value) -> Result<Snapshot, String> {
     let current = &value["current"];
-    let temp = current["temperature_2m"].as_f64().ok_or("天气数据缺少温度")? as f32;
+    let temp = current["temperature_2m"].as_f64().ok_or("Weather data has no temperature")? as f32;
     let daily = &value["daily"];
     let dates: Vec<&Value> = daily["time"].as_array().map(|items| items.iter().collect()).unwrap_or_default();
     let codes = daily["weather_code"].as_array();
@@ -371,7 +371,7 @@ pub fn parse(place: &str, value: &Value) -> Result<Snapshot, String> {
             rain: rains.and_then(|items| items.get(index)).and_then(Value::as_u64).unwrap_or(0) as u32,
         });
     }
-    if days.is_empty() { return Err("天气数据不完整".into()); }
+    if days.is_empty() { return Err("Weather data is incomplete".into()); }
     // timezone=auto 时 daily.sunrise/sunset 就是当地时间，直接截 HH:MM。
     let hhmm = |list: Option<&Vec<Value>>| list.and_then(|items| items.get(0)).and_then(Value::as_str)
         .and_then(|s| s.get(11..16)).map(str::to_string);
@@ -432,7 +432,7 @@ impl CitySearch {
                     self.rx=None;
                     if query==self.query {self.requested=Some(query);match result {Ok(results)=>{self.results=results;self.error=None;},Err(error)=>self.error=Some(error)}}
                 }
-                Err(TryRecvError::Disconnected)=>{self.rx=None;if self.requested.as_deref()==Some(self.query.as_str()){self.error=Some("城市搜索没有响应，请重试".into());}}
+                Err(TryRecvError::Disconnected)=>{self.rx=None;if self.requested.as_deref()==Some(self.query.as_str()){self.error=Some("City search didn't respond, try again".into());}}
                 Err(TryRecvError::Empty)=>{}
             }
         }
@@ -631,7 +631,7 @@ impl State {
             Err(TryRecvError::Disconnected) => {
                 self.rx = None;
                 self.loading = false;
-                if enabled && !self.city_changed(city) {self.error=Some("天气服务没有响应".into());self.failures=self.failures.saturating_add(1);}
+                if enabled && !self.city_changed(city) {self.error=Some("Weather service didn't respond".into());self.failures=self.failures.saturating_add(1);}
                 true
             }
         }

@@ -399,7 +399,7 @@ fn paint_sun_times(c: &Card, snapshot: &weather::Snapshot, now: i64, t: f32, sli
     // 顶部：返回胶囊 + 地点。
     c.fill(34.0, 37.0, 76.0, 19.0, 9.5, Color32::from_white_alpha(14));
     c.path(&[(46.0, 42.5), (42.5, 46.5), (46.0, 50.5)], 1.4, theme::GRAY);
-    c.text(51.0, 50.5, "返回天气", 10.0, W::Regular, theme::GRAY, H::Left);
+    c.text(51.0, 50.5, "Back to weather", 10.0, W::Regular, theme::GRAY, H::Left);
     let place = c.fit(&snapshot.place, 10.0, W::Regular, 150.0);
     let place_w = c.text(384.0, 50.5, &place, 10.0, W::Regular, theme::GRAY, H::Right);
     location_glyph(c, 384.0 - place_w - 7.0, 46.0, theme::GRAY, Color32::BLACK);
@@ -408,28 +408,28 @@ fn paint_sun_times(c: &Card, snapshot: &weather::Snapshot, now: i64, t: f32, sli
     let mut target = None;
     if let Some(times) = today {
         if now < times.sunset {
-            let (title, event, label, index) = if now < times.sunrise { ("距离日出", times.sunrise, rise, 0) } else { ("距离日落", times.sunset, set, 2) };
+            let (title, event, label, index) = if now < times.sunrise { ("Until sunrise", times.sunrise, rise, 0) } else { ("Until sunset", times.sunset, set, 2) };
             let minutes = ((event - now).max(0) + 59) / 60;
             c.text(40.0, 78.0, title, 10.5, W::Regular, theme::GRAY, H::Left);
             c.text(39.0, 111.0, &format!("{:02}:{:02}", minutes / 60, minutes % 60), 30.0, W::Bold, theme::WHITE, H::Left);
-            c.text(40.0, 124.0, "小时 : 分钟", 9.5, W::Regular, theme::DIM, H::Left);
-            let text = format!("{} {label}", if index == 0 { "日出" } else { "日落" });
+            c.text(40.0, 124.0, "hours : minutes", 9.5, W::Regular, theme::DIM, H::Left);
+            let text = format!("{} {label}", if index == 0 { "Sun" } else { "times" });
             let w = c.text_w(&text, 10.5, W::Semibold);
             c.fill(36.0, 133.0, w + 16.0, 19.0, 9.5, paint::alpha(SUN, 0.16));
             c.text(44.0, 147.0, &text, 10.5, W::Semibold, SUN, H::Left);
             target = Some(index);
         } else {
-            c.text(40.0, 78.0, "今日已日落", 10.5, W::Regular, theme::GRAY, H::Left);
+            c.text(40.0, 78.0, "The sun has set", 10.5, W::Regular, theme::GRAY, H::Left);
             c.text(39.0, 111.0, set, 30.0, W::Bold, theme::WHITE, H::Left);
-            c.text(40.0, 128.0, "白昼已经结束", 10.0, W::Regular, theme::DIM, H::Left);
+            c.text(40.0, 128.0, "Daylight is over", 10.0, W::Regular, theme::DIM, H::Left);
         }
         if let Some(progress) = progress {
-            c.text(40.0, 168.0, &format!("日照已过 {:.0}%", progress * 100.0), 9.5, W::Regular, theme::DIM, H::Left);
+            c.text(40.0, 168.0, &format!("{:.0}% of daylight passed", progress * 100.0), 9.5, W::Regular, theme::DIM, H::Left);
         }
     } else {
-        c.text(40.0, 78.0, "日出时间", 10.5, W::Regular, theme::GRAY, H::Left);
+        c.text(40.0, 78.0, "Sunrise", 10.5, W::Regular, theme::GRAY, H::Left);
         c.text(39.0, 111.0, rise, 30.0, W::Bold, theme::WHITE, H::Left);
-        c.text(40.0, 132.0, "日照进度待更新", 9.5, W::Regular, WARN, H::Left);
+        c.text(40.0, 132.0, "Daylight progress pending", 9.5, W::Regular, WARN, H::Left);
     }
 
     // 右侧：天空弧线。白昼按时间线性映射到半个正弦拱。
@@ -458,7 +458,7 @@ fn paint_sun_times(c: &Card, snapshot: &weather::Snapshot, now: i64, t: f32, sli
     c.seg((x0 - 10.0, horizon), (x1 + 10.0, horizon), 0.8, Color32::from_white_alpha(36));
 
     let midpoint = times.map(|times| times.clock(times.midpoint())).unwrap_or_else(|| "--:--".into());
-    for (index, (pos, label, time)) in [(0.0, "日出", rise), (0.5, "白昼中点", midpoint.as_str()), (1.0, "日落", set)].into_iter().enumerate() {
+    for (index, (pos, label, time)) in [(0.0, "Sun", rise), (0.5, "Solar noon", midpoint.as_str()), (1.0, "times", set)].into_iter().enumerate() {
         let (x, y) = point(pos);
         let next = target == Some(index);
         if index != 1 { c.circle(x, y, 2.6, if next { SUN } else { theme::GRAY }); }
@@ -507,8 +507,8 @@ fn paint_sun_times(c: &Card, snapshot: &weather::Snapshot, now: i64, t: f32, sli
         let day = (times.sunset - times.sunrise).max(0) / 60;
         let span = (times.day_end - times.day_start).max(1);
         let night = (span / 60 - day).max(0);
-        c.text(40.0, 186.0, &format!("白昼 {}小时{:02}分", day / 60, day % 60), 10.0, W::Regular, theme::GRAY, H::Left);
-        c.text(384.0, 186.0, &format!("夜晚 {}小时{:02}分", night / 60, night % 60), 10.0, W::Regular, theme::DIM, H::Right);
+        c.text(40.0, 186.0, &format!("Day {}h {:02}m", day / 60, day % 60), 10.0, W::Regular, theme::GRAY, H::Left);
+        c.text(384.0, 186.0, &format!("Night {}h {:02}m", night / 60, night % 60), 10.0, W::Regular, theme::DIM, H::Right);
         let (bx, bw, by, bh) = (40.0, 344.0, 192.0, 7.0);
         let frac = |at: i64| ((at - times.day_start) as f32 / span as f32).clamp(0.0, 1.0);
         c.fill(bx, by, bw, bh, bh / 2.0, Color32::from_rgb(38, 50, 92));
@@ -529,7 +529,7 @@ fn paint_sun_times(c: &Card, snapshot: &weather::Snapshot, now: i64, t: f32, sli
             let x = bx + bw * frac(now) * ease_out(slide);
             c.circle(x, by + bh / 2.0, 5.2, Color32::BLACK);
             c.circle(x, by + bh / 2.0, 3.6, theme::WHITE);
-            c.text(x.clamp(bx + 44.0, bx + bw - 48.0), 211.0, &format!("现在 {}", times.clock(now)), 8.5, W::Semibold, theme::WHITE, H::Center);
+            c.text(x.clamp(bx + 44.0, bx + bw - 48.0), 211.0, &format!("Now {}", times.clock(now)), 8.5, W::Semibold, theme::WHITE, H::Center);
         }
     }
 }
@@ -554,16 +554,16 @@ fn paint_forecast(c: &Card, snapshot: &weather::Snapshot, t: f32, lift: f32, pre
 
     let (tx, tw) = ([212.0, 300.0], 84.0);
     let dash = "—".to_string();
-    stat_tile(c, tx[0], 38.0, tw, "体感", &snapshot.feels.map(|v| format!("{v:.0}°")).unwrap_or(dash.clone()), |c, x, y| thermo_glyph(c, x, y, WARN));
-    stat_tile(c, tx[1], 38.0, tw, "湿度", &snapshot.humidity.map(|v| format!("{v}%")).unwrap_or(dash.clone()), |c, x, y| paint::droplet(c, x, y, 11.0, RAIN));
-    stat_tile(c, tx[0], 77.0, tw, "风速", &snapshot.wind.map(|v| format!("{v:.0} km/h")).unwrap_or(dash), |c, x, y| wind_glyph(c, x, y, theme::CYAN));
+    stat_tile(c, tx[0], 38.0, tw, "Feels like", &snapshot.feels.map(|v| format!("{v:.0}°")).unwrap_or(dash.clone()), |c, x, y| thermo_glyph(c, x, y, WARN));
+    stat_tile(c, tx[1], 38.0, tw, "Humidity", &snapshot.humidity.map(|v| format!("{v}%")).unwrap_or(dash.clone()), |c, x, y| paint::droplet(c, x, y, 11.0, RAIN));
+    stat_tile(c, tx[0], 77.0, tw, "Wind", &snapshot.wind.map(|v| format!("{v:.0} km/h")).unwrap_or(dash), |c, x, y| wind_glyph(c, x, y, theme::CYAN));
     // 第四张是日照入口：暖色底，箭头轻轻摆动提示可点；悬停时小太阳从地平线升起，按下时卡片微缩。
     let entry = c.scaled(tx[1] + tw / 2.0, 94.0, 1.0 - 0.05 * press);
     let c = &entry;
     c.fill(tx[1], 77.0, tw, 34.0, 9.0, paint::alpha(SUN, 0.13 + 0.07 * lift));
     sunrise_glyph(c, tx[1] + 14.0, 77.0 + 16.0, lift, SUN);
-    c.text(tx[1] + 27.0, 77.0 + 14.5, &format!("日出 {}", snapshot.sunrise.as_deref().unwrap_or("--:--")), 9.5, W::Regular, theme::GRAY, H::Left);
-    c.text(tx[1] + 27.0, 77.0 + 28.0, &format!("日落 {}", snapshot.sunset.as_deref().unwrap_or("--:--")), 9.5, W::Semibold, theme::WHITE, H::Left);
+    c.text(tx[1] + 27.0, 77.0 + 14.5, &format!("Sunrise {}", snapshot.sunrise.as_deref().unwrap_or("--:--")), 9.5, W::Regular, theme::GRAY, H::Left);
+    c.text(tx[1] + 27.0, 77.0 + 28.0, &format!("Sunset {}", snapshot.sunset.as_deref().unwrap_or("--:--")), 9.5, W::Semibold, theme::WHITE, H::Left);
     let nudge = (t * 3.0).sin() * 1.2;
     c.path(&[(tx[1] + tw - 9.0 + nudge, 90.0), (tx[1] + tw - 6.0 + nudge, 94.0), (tx[1] + tw - 9.0 + nudge, 98.0)], 1.3, paint::alpha(SUN, 0.9));
 
@@ -691,11 +691,11 @@ impl App {
         use crate::extras::{settings_control_row,settings_hint};
         let popup=egui::Id::new("weather-city-options");
         let mut enter=false;
-        let response=settings_control_row(ui,"城市名称",80.0,|ui|{
+        let response=settings_control_row(ui,"City",80.0,|ui|{
             ui.horizontal(|ui|{
                 let input=ui.add_sized([ui.available_width()-38.0,32.0],egui::TextEdit::singleline(&mut self.weather.city_input)
-                    .id_salt("weather-city-input").vertical_align(egui::Align::Center).margin(egui::vec2(10.0,7.0)).hint_text("输入城市名称搜索"));
-                let arrow=ui.add_sized([30.0,32.0],egui::Button::new("").corner_radius(7.0)).on_hover_text("选择具体地区");
+                    .id_salt("weather-city-input").vertical_align(egui::Align::Center).margin(egui::vec2(10.0,7.0)).hint_text("Type a city to search"));
+                let arrow=ui.add_sized([30.0,32.0],egui::Button::new("").corner_radius(7.0)).on_hover_text("Pick a place");
                 let center=arrow.rect.center();ui.painter().add(egui::Shape::line(vec![center+egui::vec2(-4.0,-2.0),center+egui::vec2(0.0,2.0),center+egui::vec2(4.0,-2.0)],egui::Stroke::new(1.5,ui.visuals().text_color())));
                 if input.changed() || input.clicked() {ui.memory_mut(|m|m.open_popup(popup));}
                 if arrow.clicked() {ui.memory_mut(|m|m.toggle_popup(popup));}
@@ -712,12 +712,12 @@ impl App {
             ui.spacing_mut().item_spacing.y=2.0;
             let weak=ui.visuals().weak_text_color();
             let note=|ui:&mut egui::Ui,text:&str|{ui.add_space(6.0);ui.label(egui::RichText::new(text).size(12.0).color(weak));ui.add_space(6.0);};
-            if self.weather.city_input.trim().chars().count()<2 {note(ui,"输入至少两个字，搜索城市或地区");}
+            if self.weather.city_input.trim().chars().count()<2 {note(ui,"Type at least two characters to search");}
             else if let Some(error)=self.weather.cities.error.clone() {
                 note(ui,&error);
-                if ui.button("重新搜索").clicked(){self.weather.cities.retry();}
-            }else if self.weather.cities.pending(){ui.add_space(6.0);ui.horizontal(|ui|{ui.spinner();ui.label(egui::RichText::new("正在搜索城市…").size(12.0).color(weak));});ui.add_space(6.0);}
-            else if self.weather.cities.results.is_empty(){note(ui,"未找到城市，试试去掉「市」「县」或用英文名");}
+                if ui.button("Search again").clicked(){self.weather.cities.retry();}
+            }else if self.weather.cities.pending(){ui.add_space(6.0);ui.horizontal(|ui|{ui.spinner();ui.label(egui::RichText::new("Searching…").size(12.0).color(weak));});ui.add_space(6.0);}
+            else if self.weather.cities.results.is_empty(){note(ui,"No city found; try a shorter or different name");}
             else {
                 egui::ScrollArea::vertical().max_height(232.0).show(ui,|ui|{
                     for position in &self.weather.cities.results {
@@ -731,8 +731,8 @@ impl App {
             self.weather.city_input=position.label.clone();self.weather.selected_city=Some(position);
             ui.memory_mut(|m|m.close_popup());
         }
-        if let Some(position)=self.weather.picked_city(){settings_hint(ui,&format!("已选择：{} · {}",position.label,position.region));}
-        else {settings_hint(ui,"输入中英文城市名，从下拉列表选择具体地区，再点「添加」。");}
+        if let Some(position)=self.weather.picked_city(){settings_hint(ui,&format!("Selected: {} · {}",position.label,position.region));}
+        else {settings_hint(ui,"Type a city name, pick the place from the list, then click Add.");}
         enter && self.weather.picked_city().is_some()
     }
 
@@ -748,7 +748,7 @@ impl App {
                 (97.0,103.0,w+27.0,18.0)
             }
             None=>{
-                let label=if self.settings.weather_city.trim().is_empty() {"自动定位".to_string()} else {self.settings.weather_city.clone()};
+                let label=if self.settings.weather_city.trim().is_empty() {"Auto location".to_string()} else {self.settings.weather_city.clone()};
                 let label=c.fit(&label,10.5,W::Regular,140.0);
                 let w=c.text_w(&label,10.5,W::Regular)+24.0;
                 let x=209.5-w/2.0;
@@ -767,8 +767,8 @@ impl App {
         let mut pick=None;
         // 背景层：点面板外任何地方都收起。
         if c.live && self.weather.picker_open && c.hit(0.0,0.0,419.0,WEATHER_H,"weather-picker-backdrop").clicked() {pick=Some(Pick::Close);}
-        let mut rows:Vec<(Option<weather::Position>,String,String)>=vec![(None,"自动定位".into(),
-            self.weather.cached_for("",None).map(|s|s.place.clone()).unwrap_or_else(||"按网络出口".into()))];
+        let mut rows:Vec<(Option<weather::Position>,String,String)>=vec![(None,"Auto location".into(),
+            self.weather.cached_for("",None).map(|s|s.place.clone()).unwrap_or_else(||"By network".into()))];
         for p in &self.settings.weather_saved {rows.push((Some(p.clone()),p.label.clone(),p.region.split(" · ").next().unwrap_or_default().to_string()));}
         let row=27.0;
         let h=rows.len() as f32*row+row+10.0;
@@ -809,7 +809,7 @@ impl App {
         if hover>0.0 {p.fill(x+4.0,my+2.0,w-8.0,row-2.0,7.0,Color32::from_white_alpha((hover*10.0) as u8));}
         let full=self.settings.weather_saved.len()>=weather::MAX_CITIES;
         p.text(x+18.0,my+19.0,"＋",11.0,W::Semibold,theme::GRAY,H::Center);
-        p.text(x+32.0,my+19.0,if full{"管理城市"}else{"添加或管理城市"},11.0,W::Regular,theme::GRAY,H::Left);
+        p.text(x+32.0,my+19.0,if full{"Manage cities"}else{"Add or manage cities"},11.0,W::Regular,theme::GRAY,H::Left);
         if manage.clicked() {pick=Some(Pick::Manage);}
         if c.live && self.weather.picker_open && c.ui.input(|i|i.key_pressed(egui::Key::Escape)) {pick=Some(Pick::Close);}
         match pick {
@@ -843,7 +843,7 @@ impl App {
         let Some(snapshot) = self.weather_pill().cloned() else { return };
         self.paint_pill_weather(c, x, layout, &snapshot);
         let width = layout.widths[crate::bar_layout::WEATHER];
-        let tip = format!("{} · {}\n更新于 {} · Open-Meteo", snapshot.place, weather::describe(snapshot.code), weather::clock(snapshot.at));
+        let tip = format!("{} · {}\nUpdated {} · Open-Meteo", snapshot.place, weather::describe(snapshot.code), weather::clock(snapshot.at));
         // 用 bar_tooltip：常驻胶囊上的提示不能用 on_hover_text，悬浮层会盖住指针、抢走点击。
         if crate::quota_ui::bar_tooltip(c.hit(x - width / 2.0, 1.0, width, 28.0, "weather-pill"), tip).clicked() {
             self.weather.solar_open=false;
@@ -854,7 +854,7 @@ impl App {
     pub(crate) fn draw_side_weather(&mut self,c:&Card,cx:f32,cy:f32) {
         let Some(snapshot)=self.weather_pill() else{return;};
         self.paint_side_weather(c,cx,cy,snapshot);
-        let tip=format!("{} · {}\n更新于 {} · Open-Meteo",snapshot.place,weather::describe(snapshot.code),weather::clock(snapshot.at));
+        let tip=format!("{} · {}\nUpdated {} · Open-Meteo",snapshot.place,weather::describe(snapshot.code),weather::clock(snapshot.at));
         let response=crate::quota_ui::bar_tooltip(c.hit(cx-17.0,cy-19.0,34.0,38.0,"weather-side"),tip);
         if response.clicked(){self.weather.solar_open=false;self.show_page(WEATHER_PAGE);}
     }
@@ -892,7 +892,7 @@ impl App {
         // 面板最后注册，命中优先级最高。
         let snapshot=self.weather.snapshot.clone();
         let (x,y,w,h)=self.weather_place_trigger(c,snapshot.as_ref());
-        let place=c.hit(x,y,w,h,"weather-place").on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("切换城市");
+        let place=c.hit(x,y,w,h,"weather-place").on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Switch city");
         let (hover,_)=c.hover_t(&place);
         if hover>0.0 {c.fill(x,y,w,h,h/2.0,Color32::from_white_alpha((hover*14.0) as u8));}
         if place.clicked() {self.weather.picker_open=!self.weather.picker_open;}
@@ -905,23 +905,23 @@ impl App {
     fn page_weather_body(&mut self, c: &Card, env: &Env, cmds: &mut Vec<Cmd>) {
         let loading = self.weather.loading;
         let ready=self.weather.can_refresh(&self.settings.weather_city,self.t);
-        c.text(326.0, 23.0, if loading { "更新中" } else if ready { "刷新" } else { "稍后刷新" }, 10.5, W::Regular, if ready { theme::GRAY } else { theme::DIM }, H::Center);
-        if c.hit(304.0, 8.0, 44.0, 21.0, "weather-refresh").on_hover_text("重新获取当地天气；请求间隔至少 30 秒，失败后至少 2 分钟").clicked() && ready {
+        c.text(326.0, 23.0, if loading { "Updating" } else if ready { "Refresh" } else { "Refresh later" }, 10.5, W::Regular, if ready { theme::GRAY } else { theme::DIM }, H::Center);
+        if c.hit(304.0, 8.0, 44.0, 21.0, "weather-refresh").on_hover_text("Fetch the weather again; at least 30 s between requests, 2 min after a failure").clicked() && ready {
             self.weather.refresh(&self.settings.weather_city,self.t);
         }
         let footer=WEATHER_H-4.0;
         c.text(404.0,footer,"Open-Meteo",8.5,W::Regular,theme::DIM,H::Right);
-        if c.hit(348.0,footer-9.0,58.0,13.0,"weather-source").on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("天气数据来自 Open-Meteo，按 CC BY 4.0 授权").clicked() {
+        if c.hit(348.0,footer-9.0,58.0,13.0,"weather-source").on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Weather data from Open-Meteo, licensed CC BY 4.0").clicked() {
             cmds.push(Cmd::OpenUrl("https://open-meteo.com/".into()));
         }
 
         let Some(snapshot) = self.weather.snapshot.clone() else {
             let (title, detail) = if loading {
-                ("正在获取当地天气…", "首次定位需要几秒钟".to_string())
+                ("Getting the weather…", "The first location takes a few seconds".to_string())
             } else if let Some(error) = &self.weather.error {
-                ("天气暂时取不到", error.clone())
+                ("Weather unavailable right now", error.clone())
             } else {
-                ("还没有天气数据", "点右上「刷新」重试".to_string())
+                ("No weather data yet", "Click Refresh (top right) to retry".to_string())
             };
             c.text(209.5, 104.0, title, 13.0, W::Semibold, theme::WHITE, H::Center);
             c.text(209.5, 124.0, &c.fit(&detail, 10.5, W::Regular, 320.0), 10.5, W::Regular, theme::GRAY, H::Center);
@@ -934,8 +934,8 @@ impl App {
         let stale = offline || age > 3600;
         c.text(344.0, footer, &stamp, 8.5, W::Regular, if stale { WARN } else { theme::DIM }, H::Right);
         c.hit(312.0, footer-9.0, 32.0, 13.0, "weather-stamp").on_hover_text(format!(
-            "上次更新 {stamp}{}",
-            if offline { "，当前显示的是缓存" } else { "" }
+            "Last updated {stamp}{}",
+            if offline { ", showing cached data" } else { "" }
         ));
 
         let response=c.hit(36.0,34.0,347.0,WEATHER_H-48.0,"weather-view").on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -998,9 +998,9 @@ impl App {
         let faint = Color32::from_white_alpha(160);
         let Some(snapshot) = snapshot else {
             icon_at(&c, width - 74.0, 68.0, 70.0, Kind::Cloud, Some(t));
-            c.text(22.0, 40.0, "天气", 15.0, W::Semibold, theme::WHITE, H::Left);
-            c.text(22.0, 84.0, if self.weather.loading { "正在获取天气…" } else { "尚无天气数据" }, 22.0, W::Bold, theme::WHITE, H::Left);
-            c.text(22.0, 108.0, "选择定位方式并应用位置后，这里会显示当前天气。", 11.5, W::Regular, soft, H::Left);
+            c.text(22.0, 40.0, "Weather", 15.0, W::Semibold, theme::WHITE, H::Left);
+            c.text(22.0, 84.0, if self.weather.loading { "Getting weather…" } else { "No weather data yet" }, 22.0, W::Bold, theme::WHITE, H::Left);
+            c.text(22.0, 108.0, "Choose a location method and apply it to see the current weather here.", 11.5, W::Regular, soft, H::Left);
             return;
         };
         let kind = kind.unwrap_or(Kind::Cloud);
@@ -1015,16 +1015,16 @@ impl App {
         let temp_w = paint_temp(&c, 22.0, 88.0, &pill_temp_text(&snapshot), 46.0, W::Bold, theme::WHITE, H::Left) + 4.0;
         c.text(28.0 + temp_w, 70.0, weather::describe(snapshot.code), 14.0, W::Semibold, theme::WHITE, H::Left);
         if let (Some(high), Some(low)) = (snapshot.high, snapshot.low) {
-            c.text(28.0 + temp_w, 89.0, &format!("最高 {high:.0}°  最低 {low:.0}°"), 11.5, W::Regular, soft, H::Left);
+            c.text(28.0 + temp_w, 89.0, &format!("High {high:.0}°  Low {low:.0}°"), 11.5, W::Regular, soft, H::Left);
         }
 
         // 底部一行：体感 / 湿度 / 风速 / 日出日落，以半透明分隔条隔开。
         let mut x = 24.0;
         let stats = [
-            snapshot.feels.map(|v| format!("体感 {v:.0}°")),
-            snapshot.humidity.map(|v| format!("湿度 {v}%")),
-            snapshot.wind.map(|v| format!("风速 {v:.0} km/h")),
-            snapshot.sunrise.as_ref().zip(snapshot.sunset.as_ref()).map(|(a, b)| format!("日出 {a} · 日落 {b}")),
+            snapshot.feels.map(|v| format!("Feels like {v:.0}°")),
+            snapshot.humidity.map(|v| format!("Humidity {v}%")),
+            snapshot.wind.map(|v| format!("Wind {v:.0} km/h")),
+            snapshot.sunrise.as_ref().zip(snapshot.sunset.as_ref()).map(|(a, b)| format!("Sunrise {a} · Sunset {b}")),
         ];
         let limit = width - 150.0;
         c.fill(12.0, 108.0, width - 24.0, 32.0, 10.0, Color32::from_black_alpha(46));
@@ -1039,12 +1039,12 @@ impl App {
         let ready = self.weather.can_refresh(&self.settings.weather_city, self.t);
         let (bx, by) = (width - 32.0, 124.0);
         let button = ui.interact(c.rect(bx - 13.0, by - 13.0, 26.0, 26.0), ui.id().with("weather-hero-refresh"), if ready { egui::Sense::click() } else { egui::Sense::hover() })
-            .on_hover_text(if ready { "刷新天气" } else { "刚刚刷新过，请稍后再试" });
+            .on_hover_text(if ready { "Refresh weather" } else { "Just refreshed, try again shortly" });
         let hover = ctx.animate_bool_with_time(button.id, ready && button.hovered(), 0.12);
         c.circle(bx, by, 13.0, Color32::from_white_alpha((34.0 + 40.0 * hover) as u8));
         let spin = if self.weather.loading { ctx.request_repaint(); ctx.input(|i| i.time) as f32 * 6.0 } else { 0.0 };
         paint::reset(&c.scaled(bx, by, 0.95), bx, by, spin, if ready || self.weather.loading { theme::WHITE } else { faint });
-        c.text(bx - 20.0, 128.5, &format!("更新于 {}", weather::clock(snapshot.at)), 11.0, W::Regular, faint, H::Right);
+        c.text(bx - 20.0, 128.5, &format!("Updated {}", weather::clock(snapshot.at)), 11.0, W::Regular, faint, H::Right);
         if button.clicked() { self.weather.refresh(&self.settings.weather_city, self.t); }
     }
 
@@ -1064,7 +1064,7 @@ impl App {
                 });
         }
 
-        settings_label(ui,"城市");
+        settings_label(ui,"City");
         settings_card(ui,|ui|{
             ui.spacing_mut().item_spacing.y=4.0;
             let current=self.settings.weather_position.clone();
@@ -1075,7 +1075,7 @@ impl App {
                 let city=position.as_ref().map(|p|p.label.as_str()).unwrap_or("");
                 let cached=self.weather.cached_for(city,position.as_ref()).cloned();
                 let (title,detail)=match &position {
-                    None=>("自动定位".to_string(),cached.as_ref().map(|s|format!("按网络出口识别 · 当前为 {}",s.place)).unwrap_or_else(||"按网络出口识别所在城市；使用代理时可能是代理所在地".into())),
+                    None=>("Auto location".to_string(),cached.as_ref().map(|s|format!("Detected from network · now {}",s.place)).unwrap_or_else(||"Detects your city from the network; with a proxy it may be the proxy's location".into())),
                     Some(p)=>(p.label.clone(),p.region.clone()),
                 };
                 let (click,remove)=city_row(ui,position==current,position.is_some(),&title,&detail,cached.as_ref(),accent);
@@ -1085,14 +1085,14 @@ impl App {
             if let Some(position)=removed {self.remove_weather_city(&position);}
             else if let Some(position)=chosen {self.switch_weather_city(position);}
             ui.add_space(4.0);
-            settings_hint(ui,&format!("最多保存 {} 个城市。点上方列表或岛上天气页的地点就能切换；只有当前城市会在后台定时更新。",weather::MAX_CITIES));
+            settings_hint(ui,&format!("Save up to {} cities. Switch from the list above or the place name on the island; only the current city updates in the background.",weather::MAX_CITIES));
         });
 
-        settings_label(ui,"添加城市");
+        settings_label(ui,"Add city");
         settings_card(ui,|ui|{
             let full=self.settings.weather_saved.len()>=weather::MAX_CITIES;
             if full {
-                settings_hint(ui,&format!("已保存 {} 个城市，删除一个后再添加。",weather::MAX_CITIES));
+                settings_hint(ui,&format!("{} cities saved; delete one to add another.",weather::MAX_CITIES));
                 return;
             }
             let mut add=self.weather_city_picker(ui);
@@ -1101,24 +1101,24 @@ impl App {
             let ready=picked.is_some() && !exists;
             ui.add_space(2.0);
             ui.horizontal(|ui|{
-                let text=egui::RichText::new("添加").size(13.0)
+                let text=egui::RichText::new("Add").size(13.0)
                     .color(if ready{Color32::WHITE}else{color(&ctx,Color32::from_gray(150),Color32::from_gray(120))});
                 let button=egui::Button::new(text).fill(if ready{accent}else{color(&ctx,Color32::from_rgb(52,52,56),Color32::from_rgb(232,235,240))})
                     .stroke(egui::Stroke::NONE).corner_radius(8.0);
                 add|=ui.add_enabled_ui(ready,|ui|ui.add_sized([88.0,32.0],button)).inner.clicked();
-                let status=if exists {"这个城市已经在列表里"} else if picked.is_none() {"先从下拉列表确认具体地区"} else {""};
+                let status=if exists {"That city is already in the list"} else if picked.is_none() {"Pick the place from the list first"} else {""};
                 if !status.is_empty(){ui.label(egui::RichText::new(status).size(11.5).color(ui.visuals().weak_text_color()));}
             });
             if add && ready {self.add_weather_city();}
         });
 
-        settings_label(ui,"更新与数据");
+        settings_label(ui,"Updates & data");
         settings_card(ui,|ui|{
-            info_row(ui,"自动更新",|ui|{ui.label(egui::RichText::new("每 15 分钟").size(12.5).color(ui.visuals().weak_text_color()));});
+            info_row(ui,"Auto update",|ui|{ui.label(egui::RichText::new("Every 15 min").size(12.5).color(ui.visuals().weak_text_color()));});
             ui.separator();
-            info_row(ui,"离线时",|ui|{ui.label(egui::RichText::new("保留上次天气，温度转灰提示").size(12.5).color(ui.visuals().weak_text_color()));});
+            info_row(ui,"Offline",|ui|{ui.label(egui::RichText::new("Keeps the last weather and greys the temperature").size(12.5).color(ui.visuals().weak_text_color()));});
             ui.separator();
-            info_row(ui,"数据来源",|ui|{
+            info_row(ui,"Source",|ui|{
                 ui.hyperlink_to("CC BY 4.0","https://creativecommons.org/licenses/by/4.0/");
                 ui.label(egui::RichText::new("·").color(ui.visuals().weak_text_color()));
                 ui.hyperlink_to("Open-Meteo","https://open-meteo.com/");
@@ -1144,7 +1144,7 @@ fn city_row(ui: &mut egui::Ui, selected: bool, removable: bool, title: &str, det
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 48.0), egui::Sense::click());
     let remove_rect = egui::Rect::from_center_size(egui::pos2(rect.right() - 18.0, rect.center().y), egui::vec2(26.0, 26.0));
     let remove = if removable {
-        Some(ui.interact(remove_rect, response.id.with("remove"), egui::Sense::click()).on_hover_text("删除这个城市"))
+        Some(ui.interact(remove_rect, response.id.with("remove"), egui::Sense::click()).on_hover_text("Delete this city"))
     } else { None };
     let row_hover = response.hovered() && !remove.as_ref().is_some_and(|r| r.hovered());
     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -1213,7 +1213,7 @@ fn city_option(ui: &mut egui::Ui, position: &weather::Position, chosen: bool, sa
     let canvas = Card::new(ui, rect.min, rect);
     location_glyph(&canvas, 18.0, 22.5, if chosen { accent } else { weak }, color(&ctx, Color32::from_rgb(40, 40, 44), Color32::WHITE));
     let right = rect.right() - 12.0;
-    let tag = if chosen { Some(("✓", accent)) } else if saved { Some(("已添加", weak)) } else { None };
+    let tag = if chosen { Some(("✓", accent)) } else if saved { Some(("Added", weak)) } else { None };
     let tag_w = tag.map(|(t, c)| painter.text(egui::pos2(right, rect.center().y), egui::Align2::RIGHT_CENTER, t, egui::FontId::proportional(12.0), c).width()).unwrap_or(0.0);
     let clip = egui::Rect::from_min_max(rect.min + egui::vec2(32.0, 0.0), egui::pos2(right - tag_w - 8.0, rect.bottom()));
     let text_painter = painter.with_clip_rect(clip.intersect(painter.clip_rect()));

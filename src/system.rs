@@ -99,27 +99,27 @@ impl Snapshot {
         if self.audio_endpoint == old.audio_endpoint && self.volume != old.volume {
             if let Some((v, mute)) = self.volume {
                 out.push((
-                    "系统音量".into(),
+                    "System volume".into(),
                     if mute {
-                        "已静音".into()
+                        "Muted".into()
                     } else {
-                        format!("音量 {v}%")
+                        format!("Volume {v}%")
                     },
                 ));
             }
         }
         if self.caps != old.caps {
             out.push((
-                "大写锁定".into(),
-                if self.caps { "已开启" } else { "已关闭" }.into(),
+                "Caps Lock".into(),
+                if self.caps { "On" } else { "Off" }.into(),
             ));
         }
         if self.network != old.network || self.network && self.network_kind != old.network_kind {
             let kind=if self.network {self.network_kind}else{old.network_kind};
-            let status=if self.network {"网络已连接"}else{"网络已断开"};
+            let status=if self.network {"Connected"}else{"Disconnected"};
             out.push((
-                "网络连接".into(),
-                match kind {NetworkKind::Wifi=>format!("Wi-Fi · {status}"),NetworkKind::Ethernet=>format!("以太网 · {status}"),NetworkKind::Other=>status.into()},
+                "Network".into(),
+                match kind {NetworkKind::Wifi=>format!("Wi-Fi · {status}"),NetworkKind::Ethernet=>format!("Ethernet · {status}"),NetworkKind::Other=>status.into()},
             ));
         }
         out
@@ -312,7 +312,7 @@ fn notification_identity(n:&UserNotification,number:u32,created:i64,known:Option
         else{known.or_else(||toast_source::sender(number,created).and_then(|id|Messenger::from_notification_id(&id)))};
     if let Some(client)=client{return (client.name().into(),client.adapter().notification_id.into());}
     let name=info.and_then(|app|app.DisplayInfo().ok()).and_then(|display|display.DisplayName().ok())
-        .map(|name|name.to_string()).filter(|name|!name.trim().is_empty()).unwrap_or_else(||"Windows 通知".into());
+        .map(|name|name.to_string()).filter(|name|!name.trim().is_empty()).unwrap_or_else(||"Windows notifications".into());
     let id=if id.is_empty(){name.clone()}else{id};
     (name,id)
 }
@@ -379,12 +379,12 @@ impl NotificationBaseline {
                 if let Some(old)=self.previous.as_ref().and_then(|items|items.get(&id)).filter(|old|old.created==created && old.client==client){return (*old,None);}
                 let version=ToastVersion{created,client,body:ToastBody::Unavailable};
                 // 已确认是新通知时仍给通用提醒；恢复正文后只补指纹，不重复弹出。
-                let message=self.changed(id,version).then(||if tracked{"有新消息".into()}else{"收到新通知".into()});
+                let message=self.changed(id,version).then(||if tracked{"New message".into()}else{"New notification".into()});
                 return (version,message);
             }
         };
         let version=ToastVersion::new(created,client,tracked.then_some(body.as_str()));
-        let message=self.changed(id,version).then(||if tracked && body.trim().is_empty(){"有新消息".into()}else{body});
+        let message=self.changed(id,version).then(||if tracked && body.trim().is_empty(){"New message".into()}else{body});
         (version,message)
     }
 }
@@ -393,11 +393,11 @@ fn channel_status(client:crate::messenger::Messenger)->String{
     use windows::UI::Notifications::{NotificationSetting,ToastNotificationManager};
     let name=client.name();
     match ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(client.adapter().notification_id)).and_then(|notifier|notifier.Setting()){
-        Ok(NotificationSetting::Enabled)=>format!("{name} 系统通知通道可用"),
-        Ok(NotificationSetting::DisabledForApplication)=>format!("{name} 系统通知已关闭，请在 Windows 通知设置中开启后重新连接"),
-        Ok(NotificationSetting::DisabledForUser)=>"Windows 系统通知已关闭，请开启后重新连接".into(),
-        Ok(NotificationSetting::DisabledByGroupPolicy)=>"系统策略禁止通知".into(),
-        _=>format!("{name} 系统通知通道未就绪，请检查安装和通知设置后重新连接"),
+        Ok(NotificationSetting::Enabled)=>format!("{name} system notifications available"),
+        Ok(NotificationSetting::DisabledForApplication)=>format!("{name} notifications are off; turn them on in Windows notification settings and reconnect"),
+        Ok(NotificationSetting::DisabledForUser)=>"Windows notifications are off; turn them on and reconnect".into(),
+        Ok(NotificationSetting::DisabledByGroupPolicy)=>"Notifications blocked by system policy".into(),
+        _=>format!("{name} notifications aren't ready; check the install and notification settings, then reconnect"),
     }
 }
 
@@ -428,7 +428,7 @@ fn connect_inner(ctx:eframe::egui::Context,filter:crate::messenger::Notification
             let _apartment=Apartment;
             if request.get()? != UserNotificationListenerAccessStatus::Allowed {
                 send(Incoming::Revoked);
-                send(Incoming::Status("Windows 未授予通知读取权限，可在系统设置中调整。".into()));
+                send(Incoming::Status("Windows didn't grant notification access; change it in system settings.".into()));
                 return Ok(());
             }
             let listener = UserNotificationListener::Current()?;
@@ -445,9 +445,9 @@ fn connect_inner(ctx:eframe::egui::Context,filter:crate::messenger::Notification
                     Ok(Some((items,count)))
                 }){
                     Ok(Some(items))=>items,
-                    Ok(None)=>{send(Incoming::Revoked);send(Incoming::Status("通知权限已被关闭".into()));return Ok(());}
+                    Ok(None)=>{send(Incoming::Revoked);send(Incoming::Status("Notification access was turned off".into()));return Ok(());}
                     Err(error)=>{
-                        let status=format!("Windows 通知暂时读取失败：{} · 将自动重试",error.code());
+                        let status=format!("Couldn't read Windows notifications: {} · retrying automatically",error.code());
                         if status!=last_status{send(Incoming::Status(status.clone()));last_status=status;}
                         if stopped.recv_timeout(std::time::Duration::from_secs(2))!=Err(mpsc::RecvTimeoutError::Timeout){return Ok(());}
                         continue;
@@ -483,7 +483,7 @@ fn connect_inner(ctx:eframe::egui::Context,filter:crate::messenger::Notification
                 for (_,app,id,body,target) in messages {
                     if !send(Incoming::Message(app,id,body,target)){return Ok(());}
                 }
-                let status=match filter{crate::messenger::NotificationFilter::Only(client)=>format!("仅监听 {} · {channels}",client.name()),crate::messenger::NotificationFilter::All=>format!("正在监听 Windows 通知 · 当前可见 {count} 条\n{channels}")};
+                let status=match filter{crate::messenger::NotificationFilter::Only(client)=>format!("Listening to {} only · {channels}",client.name()),crate::messenger::NotificationFilter::All=>format!("Listening to Windows notifications · {count} visible\n{channels}")};
                 if status!=last_status {
                     if !send(Incoming::Status(status.clone())){return Ok(());}
                     last_status=status;
@@ -492,14 +492,14 @@ fn connect_inner(ctx:eframe::egui::Context,filter:crate::messenger::Notification
             }
         };
         if let Err(e) = run() {
-            send(Incoming::Status(format!("Windows 暂不允许读取通知：{}。请检查通知访问权限与应用身份。",e.code())));
+            send(Incoming::Status(format!("Windows doesn't allow reading notifications: {}. Check notification access and the app identity.",e.code())));
         }
     }).map_err(|_|windows::core::Error::from_win32())?;
     Ok(Notifications{incoming:rx,stop,taskbar_mask})
 }
 
 pub fn pick_files() -> Result<Vec<std::path::PathBuf>> {
-    pick_files_for("添加文件到置物架",true)
+    pick_files_for("Add files to the shelf",true)
 }
 
 pub fn pick_files_for(title:&str,multiple:bool) -> Result<Vec<std::path::PathBuf>> {
@@ -789,7 +789,7 @@ pub(crate) fn avoidance_windows()->std::result::Result<Vec<crate::avoidance::Can
         BOOL(1)
     }
     let mut items:Vec<crate::avoidance::Candidate>=Vec::new();
-    unsafe{EnumWindows(Some(visit),LPARAM(&mut items as *mut _ as isize))}.map_err(|_|"无法读取应用列表，请刷新重试".to_string())?;
+    unsafe{EnumWindows(Some(visit),LPARAM(&mut items as *mut _ as isize))}.map_err(|_|"Couldn't read the app list, refresh and try again".to_string())?;
     items.sort_by_key(|a|a.name.to_lowercase());
     Ok(items)
 }

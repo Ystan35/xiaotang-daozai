@@ -166,7 +166,7 @@ pub fn parse_local_state(raw: &[u8], browser: Browser) -> Vec<Profile> {
         let name = info["name"].as_str().unwrap_or_default().trim();
         let email = info["user_name"].as_str().unwrap_or_default().trim();
         let label = match (name.is_empty(), email.is_empty()) {
-            (false, false) if name != email => format!("{name}（{email}）"),
+            (false, false) if name != email => format!("{name} ({email})"),
             (false, _) => name.to_string(),
             (true, false) => email.to_string(),
             (true, true) => dir.clone(),
@@ -210,20 +210,20 @@ pub fn discover_profiles() -> Vec<Profile> { Vec::new() }
 #[cfg(windows)]
 pub fn open(profile: Option<&Profile>) -> Result<(), String> {
     use windows::{core::{w, PCWSTR}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL}};
-    let (file, params) = launch_command(profile).ok_or("浏览器资料名称无效，请在设置中重新选择")?;
+    let (file, params) = launch_command(profile).ok_or("Invalid browser profile name; choose it again in settings")?;
     let wide = |s: &str| s.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     let (file_w, params_w) = (wide(&file), wide(&params));
     let params = if params.is_empty() { PCWSTR::null() } else { PCWSTR(params_w.as_ptr()) };
     // ShellExecute 会按「应用路径」注册表找到 chrome.exe / msedge.exe，无需知道安装位置。
     let result = unsafe { ShellExecuteW(None, w!("open"), PCWSTR(file_w.as_ptr()), params, PCWSTR::null(), SW_SHOWNORMAL) };
     if result.0 as isize <= 32 {
-        return Err(match profile { Some(p) => format!("无法启动 {}，请确认已安装", p.browser.name()), None => "无法打开默认浏览器".into() });
+        return Err(match profile { Some(p) => format!("Couldn't start {}; check it's installed", p.browser.name()), None => "Couldn't open the default browser".into() });
     }
     Ok(())
 }
 
 #[cfg(not(windows))]
-pub fn open(_profile: Option<&Profile>) -> Result<(), String> { Err("打开浏览器暂仅支持 Windows".into()) }
+pub fn open(_profile: Option<&Profile>) -> Result<(), String> { Err("Opening a browser is Windows-only".into()) }
 
 #[cfg(test)]
 mod tests {

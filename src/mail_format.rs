@@ -212,7 +212,7 @@ fn image_alt(tag: &str) -> Option<String> {
     let alt = ALT.get_or_init(|| regex::Regex::new(r#"(?is)\balt\s*=\s*["']([^"']*)["']"#).expect("alt"));
     let text = alt.captures(tag)?.get(1)?.as_str().trim().to_string();
     let lower = text.to_ascii_lowercase();
-    let noise = ["logo", "icon", "spacer", "pixel", "banner", "avatar", "image", "图片", "图标", "头像", "配图"];
+    let noise = ["logo", "icon", "spacer", "pixel", "banner", "avatar", "image", "Images", "图标", "头像", "配图"];
     if text.chars().count() < 2 || noise.iter().any(|word| lower == *word) {
         None
     } else {
@@ -325,7 +325,7 @@ fn from_html(html: &str) -> Vec<Line> {
     let s = strong.replace_all(&s, "**");
     let s = image.replace_all(&s, |caps: &regex::Captures| {
         let tag = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-        image_alt(tag).map(|alt| format!("[图片：{alt}]")).unwrap_or_default()
+        image_alt(tag).map(|alt| format!("[Image: {alt}]")).unwrap_or_default()
     });
     let s = header_cell.replace_all(&s, |caps: &regex::Captures| {
         if caps.get(0).is_some_and(|m| m.as_str().starts_with("</")) { "** · " } else { "**" }

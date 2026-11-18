@@ -181,20 +181,20 @@ pub fn recognize(path: &Path) -> Result<String, String> {
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
     use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
-    let bytes = std::fs::read(path).map_err(|_| "图片文件已被删除".to_string())?;
-    let img = decode_png(&bytes).ok_or("图片无法读取")?;
+    let bytes = std::fs::read(path).map_err(|_| "The image file was deleted".to_string())?;
+    let img = decode_png(&bytes).ok_or("Can't read the image")?;
     unsafe { let _ = windows::Win32::System::WinRT::RoInitialize(windows::Win32::System::WinRT::RO_INIT_MULTITHREADED); }
-    let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| "系统没有可用的文字识别语言，请在 Windows 设置的「语言」里安装中文或英文的「光学字符识别」".to_string())?;
+    let engine = OcrEngine::TryCreateFromUserProfileLanguages().map_err(|_| "No text recognition language is installed; add Optical character recognition for Chinese or English in Windows Settings → Language".to_string())?;
     let max = OcrEngine::MaxImageDimension().unwrap_or(10_000).max(1);
     // 小截图放大一倍更容易认出小字；超过系统上限的按比例缩小。
     let scale = if img.w.max(img.h) > max { max as f32 / img.w.max(img.h) as f32 } else if img.w.max(img.h) * 2 <= max && (img.w as u64 * img.h as u64) < 2_000_000 { 2.0 } else { 1.0 };
     let (w, h, mut px) = if scale == 1.0 { (img.w, img.h, img.px) } else {
-        let full = image::RgbaImage::from_raw(img.w, img.h, img.px).ok_or("图片无法读取")?;
+        let full = image::RgbaImage::from_raw(img.w, img.h, img.px).ok_or("Can't read the image")?;
         let (w, h) = (((img.w as f32 * scale) as u32).clamp(1, max), ((img.h as f32 * scale) as u32).clamp(1, max));
         (w, h, image::imageops::resize(&full, w, h, image::imageops::FilterType::Triangle).into_raw())
     };
     px.chunks_exact_mut(4).for_each(|p| p.swap(0, 2));
-    let fail = |e: windows::core::Error| format!("文字识别失败：{}", e.message());
+    let fail = |e: windows::core::Error| format!("Text recognition failed: {}", e.message());
     let writer = DataWriter::new().map_err(fail)?;
     writer.WriteBytes(&px).map_err(fail)?;
     let buffer = writer.DetachBuffer().map_err(fail)?;
@@ -211,7 +211,7 @@ pub fn recognize(path: &Path) -> Result<String, String> {
 }
 
 #[cfg(not(windows))]
-pub fn recognize(_path: &Path) -> Result<String, String> { Err("文字识别仅支持 Windows".into()) }
+pub fn recognize(_path: &Path) -> Result<String, String> { Err("Text recognition is Windows-only".into()) }
 
 /// 把记录的图片放回剪贴板：`CF_DIB` 给大多数程序，`PNG` 保留透明度，另加岛仔标记避免重复记录。
 #[cfg(windows)]

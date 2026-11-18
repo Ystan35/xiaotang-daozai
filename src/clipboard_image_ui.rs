@@ -47,8 +47,8 @@ impl App {
         self.clip_clear_button(c, items.iter().filter(|(_, clip, _)| !clip.pinned).count(), true);
         if n == 0 {
             c.dashed(42.0, 32.0, 335.0, 91.0, 12.0, 1.2, Color32::from_gray(70), 0.0);
-            c.text(209.5, 72.0, "截图和复制的图片会出现在这里", 12.0, W::Semibold, theme::WHITE, H::Center);
-            let hint = if self.settings.clipboard_images { "Win+Shift+S 截图后自动记录 · 点「识字」取出文字" } else { "在设置 → 剪贴板里打开「记录图片」" };
+            c.text(209.5, 72.0, "Screenshots and copied images appear here", 12.0, W::Semibold, theme::WHITE, H::Center);
+            let hint = if self.settings.clipboard_images { "Win+Shift+S screenshots are saved automatically · click Read text" } else { "Turn on Record images in Settings → Clipboard" };
             c.text(209.5, 90.0, hint, size::TINY, W::Regular, theme::GRAY, H::Center);
             return;
         }
@@ -62,7 +62,7 @@ impl App {
             if r.drag_started() {
                 match self.clip_image_path(image) {
                     Some(path) if path.exists() => cmds.push(Cmd::DragFile(path)),
-                    _ => self.say("图片文件已被删除"),
+                    _ => self.say("The image file was deleted"),
                 }
             }
             let (h, pr) = c.hover_t(&r);
@@ -87,20 +87,20 @@ impl App {
             c.text(x + 2.0, y0 + th + 15.0, &clip.at, size::TINY, W::Regular, theme::DIM, H::Left);
             let pending = self.clip_ocr_pending(image);
             let (ocr, bc) = capsule(c, x + tw - 34.0, y0 + th + 4.0, 34.0, 16.0, &format!("clip-ocr-{}", image.file), theme::BTN, theme::BTN_HOVER);
-            bc.text(x + tw - 17.0, y0 + th + 15.5, if pending { "识别中" } else if clip.text.is_empty() { "识字" } else { "文字" }, size::TINY, W::Semibold, theme::WHITE, H::Center);
-            let ocr = ocr.on_hover_text(if clip.text.is_empty() { "识别图片里的文字并复制（在本机完成）" } else { "复制识别出的文字" });
+            bc.text(x + tw - 17.0, y0 + th + 15.5, if pending { "Reading…" } else if clip.text.is_empty() { "Read text" } else { "Text" }, size::TINY, W::Semibold, theme::WHITE, H::Center);
+            let ocr = ocr.on_hover_text(if clip.text.is_empty() { "Read the text in the image and copy it (on this PC)" } else { "Copy the recognized text" });
             let menu_open = r.context_menu_opened();
             let r = if menu_open { r } else {
                 let text = clip.text.clone();
                 r.on_hover_ui(|ui| self.clip_image_tooltip(ui, image, &text))
             };
             r.context_menu(|ui| {
-                if ui.button("复制图片").clicked() { action = Some((index, 0)); ui.close_menu(); }
-                if ui.button(if clip.text.is_empty() { "识字并复制" } else { "复制识别出的文字" }).clicked() { action = Some((index, 3)); ui.close_menu(); }
-                if ui.button("查看大图").clicked() { action = Some((index, 4)); ui.close_menu(); }
-                if ui.button("在文件夹中显示").clicked() { action = Some((index, 5)); ui.close_menu(); }
-                if ui.button(if clip.pinned { "取消固定" } else { "固定（清空时保留）" }).clicked() { action = Some((index, 1)); ui.close_menu(); }
-                if ui.button("删除").clicked() { action = Some((index, 2)); ui.close_menu(); }
+                if ui.button("Copy image").clicked() { action = Some((index, 0)); ui.close_menu(); }
+                if ui.button(if clip.text.is_empty() { "Read text and copy" } else { "Copy the recognized text" }).clicked() { action = Some((index, 3)); ui.close_menu(); }
+                if ui.button("View full size").clicked() { action = Some((index, 4)); ui.close_menu(); }
+                if ui.button("Show in folder").clicked() { action = Some((index, 5)); ui.close_menu(); }
+                if ui.button(if clip.pinned { "Unpin" } else { "Pin (kept when clearing)" }).clicked() { action = Some((index, 1)); ui.close_menu(); }
+                if ui.button("Delete").clicked() { action = Some((index, 2)); ui.close_menu(); }
             });
             if action.is_some() {}
             else if delete.clicked() { action = Some((index, 2)); }
@@ -110,18 +110,18 @@ impl App {
             else if r.clicked() { action = Some((index, 0)); }
         }
         if n > IMG_TILES {
-            c.text(209.5, 122.0, &format!("{}–{} / {n} · 滚轮查看", self.clip_img_first + 1, (self.clip_img_first + IMG_TILES).min(n)), 10.0, W::Regular, theme::DIM, H::Center);
+            c.text(209.5, 122.0, &format!("{}–{} / {n} · scroll", self.clip_img_first + 1, (self.clip_img_first + IMG_TILES).min(n)), 10.0, W::Regular, theme::DIM, H::Center);
         }
         let Some((index, kind)) = action else { return };
         let Some((_, clip, image)) = items.iter().find(|(i, _, _)| *i == index) else { return };
         match kind {
             0 => self.copy_clip_image(image),
-            1 => { if !self.clipboard.lock().toggle_pin(index) { self.say(format!("最多固定 {} 条", crate::clipboard::MAX_PINNED)); } }
+            1 => { if !self.clipboard.lock().toggle_pin(index) { self.say(format!("You can pin up to {}", crate::clipboard::MAX_PINNED)); } }
             2 => self.clipboard.lock().remove(index),
             3 => self.recognize_clip_image(c.ui.ctx(), image, &clip.text),
             4 | 5 => match self.clip_image_path(image) {
                 Some(path) if path.exists() => cmds.push(if kind == 4 { Cmd::Open(path) } else { Cmd::Reveal(path) }),
-                _ => self.say("图片文件已被删除"),
+                _ => self.say("The image file was deleted"),
             },
             _ => {}
         }
@@ -138,15 +138,15 @@ impl App {
             let preview: String = text.chars().take(400).collect();
             ui.label(format!("{preview}{}", if text.chars().count() > 400 { "…" } else { "" }));
         }
-        ui.label("点击复制 · 拖到其他程序直接放下 · 双击查看大图 · 右键更多");
+        ui.label("Click to copy · drag into another app · double-click for full size · right-click for more");
     }
 
     pub(crate) fn copy_clip_image(&mut self, image: &ClipImage) {
         let Some(dir) = self.clipboard.lock().images_dir() else { return };
         #[cfg(windows)]
-        self.say(if crate::clipboard_image::copy(&image.path(&dir), crate::clipboard::HISTORY_COPY_FORMAT) { "已复制图片" } else { "图片已被删除或复制失败" });
+        self.say(if crate::clipboard_image::copy(&image.path(&dir), crate::clipboard::HISTORY_COPY_FORMAT) { "Image copied" } else { "Image deleted or copy failed" });
         #[cfg(not(windows))]
-        { let _ = (dir, image); self.say("复制图片仅支持 Windows"); }
+        { let _ = (dir, image); self.say("Copying images is Windows-only"); }
     }
 
     pub(crate) fn clip_ocr_pending(&self, image: &ClipImage) -> bool {
@@ -156,7 +156,7 @@ impl App {
     /// 已识别过的直接复制文字；否则在后台识别，完成后复制并记到这条记录上。
     pub(crate) fn recognize_clip_image(&mut self, ctx: &egui::Context, image: &ClipImage, text: &str) {
         if !text.is_empty() { self.copy_ocr_text(text); return; }
-        if self.clip_ocr.is_some() { self.say("正在识别上一张图片"); return; }
+        if self.clip_ocr.is_some() { self.say("Still reading the previous image"); return; }
         let Some(dir) = self.clipboard.lock().images_dir() else { return };
         let path = image.path(&dir);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -174,7 +174,7 @@ impl App {
         #[cfg(not(windows))]
         let copied = false;
         let count = text.chars().filter(|c| !c.is_whitespace()).count();
-        self.say(if copied { format!("已复制识别出的 {count} 个字") } else { "复制失败，请重试".to_string() });
+        self.say(if copied { format!("Copied {count} recognized characters") } else { "Copy failed, try again".to_string() });
     }
 
     pub(crate) fn clipboard_ocr_tick(&mut self) {
@@ -182,12 +182,12 @@ impl App {
         let result = match rx.try_recv() {
             Ok(result) => result,
             Err(std::sync::mpsc::TryRecvError::Empty) => return,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err("文字识别失败".into()),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err("Text recognition failed".into()),
         };
         let file = file.clone();
         self.clip_ocr = None;
         match result {
-            Ok(text) if text.trim().is_empty() => self.say("图片里没有识别到文字"),
+            Ok(text) if text.trim().is_empty() => self.say("No text found in the image"),
             Ok(text) => { self.clipboard.lock().set_image_text(&file, &text); self.copy_ocr_text(&text); }
             Err(e) => self.say(e),
         }
