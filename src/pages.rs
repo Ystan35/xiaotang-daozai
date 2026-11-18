@@ -1062,7 +1062,7 @@ impl App {
     pub(crate) fn page_mail(&mut self, c: &Card, _env: &Env, cmds: &mut Vec<Cmd>) {
         if self.mail.accounts.is_empty() {
             c.text(42.0, 60.0, "No mail account yet", 13.0, W::Bold, theme::WHITE, H::Left);
-            let hint = c.fit("Add one in Settings → Mail; passwords go only to Windows Credential Manager", 10.5, W::Regular, 344.0);
+            let hint = c.fit("Add one in Settings → Mail; passwords stay in Windows Credential Manager", 10.5, W::Regular, 344.0);
             c.text(42.0, 77.0, &hint, 10.5, W::Regular, theme::GRAY, H::Left);
             let (go, gc) = capsule(c, 42.0, 88.0, 84.0, 26.0, "mail-setup", theme::BTN, theme::BTN_HOVER);
             gc.text(58.0, 105.0, "Add", size::BODY, W::Regular, theme::WHITE, H::Left);

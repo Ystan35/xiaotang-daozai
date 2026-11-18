@@ -8493,3 +8493,4 @@ fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     assert_eq!(items.len(),1);assert!(items[0].image.is_none());
     assert!(h.app.clip_thumbs.is_empty(),"图片清空后缩略图缓存也释放");
 }
+
