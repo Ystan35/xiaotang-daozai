@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- Easier page navigation: swipe left/right on a trackpad, use Shift+wheel or tilt the wheel, or drag the card sideways to turn one page; the vertical wheel keeps scrolling lists. Hover the dots under the card to see every page by name and click one to jump there. Keys 1–9 jump to that page, Home/End to the first/last, ←/→ step. Ctrl+Alt+D opens the island from anywhere for keyboard use (Esc or Ctrl+Alt+D again closes it).
+- The interface is now in English.
 - 剪贴板的文字和图片都可以直接拖到其他程序：文字放下即粘贴，图片以文件放下（聊天窗口、文件夹、文档均可）。
 - Claude 账号轮换的切换按钮移到 AI 额度页右下角，不再挡住顶栏日期；账号多于四个时可用滚轮逐行滚动。
 - 剪贴板新增「记录图片」（设置 → 待办与置物 → 剪贴板，默认关闭）：截图和复制的图片出现在置物架新的「图片」分栏，一屏四张大缩略图，悬停看大预览，点一下重新复制，双击用系统看图打开原图，右键可在文件夹中显示；「剪贴板」分栏只列文字，两边的「清空」各清各的。图片条目上的「识字」用 Windows 自带的文字识别取出图片里的中英文并复制，在本机完成、不联网；识别结果记在这条记录上，下次点「文字」直接复制。图片保存在数据目录的 `clipboard-images`，记录删除或被挤出时一起删除；有文字时只记文字，密码管理器标记的内容照旧跳过。

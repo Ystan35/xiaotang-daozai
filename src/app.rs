@@ -64,6 +64,8 @@ fn pill_shadow(painter:&egui::Painter,rect:Rect,radius:f32,strength:f32){
         painter.rect_filled(r,radius+grow*0.8,Color32::from_black_alpha((255.0*a*strength) as u8));
     }
 }
+/// Short names for the page strip under the card.
+pub(crate) const NAV_SHORT: [&str; 9] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI", "Calendar", "Weather"];
 pub(crate) const PAGE_NAMES: [&str; 9] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI quota", "Calendar", "Weather"];
 pub(crate) const PAGE_SETTINGS_TABS: [usize; 9] = [1,2,3,5,4,7,11,8,12];
 
@@ -661,6 +663,15 @@ pub struct App {
     wheel_delta: f32,
     wheel_at: f64,
     wheel_page_at: f64,
+    /// Horizontal scroll (trackpad swipe, tilt wheel, Shift+wheel): one page per gesture.
+    wheel_x: f32,
+    wheel_x_at: f64,
+    wheel_x_armed: bool,
+    /// Where a press on the open card started, for drag-to-swipe paging.
+    swipe: Option<(Pos2, f64)>,
+    /// Opened from the global hotkey: stays open for the keyboard until Esc, the hotkey again, or focus loss.
+    pub(crate) key_open: bool,
+    key_open_at: f64,
 
     // 拖入
     pub(crate) drag_hot: bool,
@@ -857,6 +868,12 @@ impl App {
             wheel_delta: 0.0,
             wheel_at: -1.0,
             wheel_page_at: -1.0,
+            wheel_x: 0.0,
+            wheel_x_at: -1.0,
+            wheel_x_armed: true,
+            swipe: None,
+            key_open: false,
+            key_open_at: 0.0,
             drag_hot: false,
             drag_a: 0.0,
             drag_saved: None,
@@ -1519,6 +1536,33 @@ impl App {
         }
     }
 
+    /// Visible pages in the user's order.
+    pub(crate) fn page_sequence(&self)->Vec<usize>{
+        self.settings.page_order.iter().copied().filter(|page|self.settings.visible_pages[*page]).collect()
+    }
+
+    /// Jump straight to a visible page, animating in the direction it lies.
+    pub(crate) fn jump_to_page(&mut self,page:usize){
+        if page==self.page || !self.settings.visible_pages[page] {return;}
+        let position=|page|self.settings.page_order.iter().position(|p|*p==page).unwrap_or(0);
+        let dir=if position(page)>position(self.page){1.0}else{-1.0};
+        self.go(page,dir);
+    }
+
+    /// Global hotkey: open the island for keyboard use, or close it again. Returns true when it opened.
+    pub fn toggle_keyboard_open(&mut self)->bool{
+        if self.key_open {self.close_keyboard_open();return false;}
+        self.reveal_unread();
+        self.forced_open_until=f64::INFINITY;
+        self.key_open=true;self.key_open_at=self.t;
+        true
+    }
+
+    fn close_keyboard_open(&mut self){
+        self.key_open=false;
+        self.forced_open_until=0.0;
+    }
+
     fn navigate_page(&mut self,next:bool) {
         let position=self.settings.page_order.iter().position(|page|*page==self.page).unwrap();
         for offset in 1..=PAGE_NAMES.len() {
@@ -1827,10 +1871,28 @@ impl App {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && self.is_editing() {
             self.cancel_edit();
         }
-        if (!self.is_editing() || self.todo_choosing) && inside && self.open && self.reveal > 0.95 {
-            let (scroll, left, right, esc) = ctx.input(|i| (i.raw_scroll_delta.y, i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight), i.key_pressed(egui::Key::Escape)));
-            if esc { self.hover_lock = true; }
-            if (left || right) && !self.todo_choosing {
+        if self.key_open && self.t-self.key_open_at>0.6 && !ctx.input(|i|i.focused) {self.close_keyboard_open();}
+        if (!self.is_editing() || self.todo_choosing) && (inside || self.key_open) && self.open && self.reveal > 0.95 {
+            let (scroll, scroll_x, left, right, esc) = ctx.input(|i| (if inside {i.raw_scroll_delta.y}else{0.0}, if inside {i.raw_scroll_delta.x}else{0.0}, i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight), i.key_pressed(egui::Key::Escape)));
+            const NUMBER_KEYS:[egui::Key;9]=[egui::Key::Num1,egui::Key::Num2,egui::Key::Num3,egui::Key::Num4,egui::Key::Num5,egui::Key::Num6,egui::Key::Num7,egui::Key::Num8,egui::Key::Num9];
+            let (number,home,end)=ctx.input(|i|(NUMBER_KEYS.iter().position(|key|i.key_pressed(*key)),i.key_pressed(egui::Key::Home),i.key_pressed(egui::Key::End)));
+            if esc { if self.key_open {self.close_keyboard_open();} self.hover_lock = true; }
+            let sequence=self.page_sequence();
+            let target=if self.todo_choosing {None} else if let Some(n)=number {sequence.get(n).copied()} else if home {sequence.first().copied()} else if end {sequence.last().copied()} else {None};
+            // Horizontal input pages everywhere, so vertical wheel can stay with lists.
+            if scroll_x!=0.0 && scroll_x.abs()>scroll.abs() {
+                if self.t-self.wheel_x_at>0.25 {self.wheel_x=0.0;self.wheel_x_armed=true;}
+                self.wheel_x_at=self.t;self.wheel_x+=scroll_x;
+                if self.wheel_x_armed && self.wheel_x.abs()>=24.0 && !self.todo_choosing {
+                    self.wheel_x_armed=false;
+                    self.wheel_delta=0.0;
+                    self.navigate_page(self.wheel_x<0.0);
+                }
+                ctx.input_mut(|i|{i.raw_scroll_delta=Vec2::ZERO;i.smooth_scroll_delta=Vec2::ZERO;});
+            } else if let Some(page)=target {
+                self.wheel_delta=0.0;
+                self.jump_to_page(page);
+            } else if (left || right) && !self.todo_choosing {
                 self.wheel_delta=0.0;
                 self.navigate_page(right);
             } else if scroll!=0.0 {
@@ -1882,6 +1944,18 @@ impl App {
                 }
             }
         } else {self.wheel_delta=0.0;}
+        // Drag-to-swipe: a mostly horizontal drag on the open card that no widget claimed turns the page.
+        {
+            let (pressed,released,pos)=ctx.input(|i|(i.pointer.primary_pressed(),i.pointer.primary_released(),i.pointer.interact_pos()));
+            if pressed {self.swipe=(inside && self.open && self.reveal>0.95 && !self.is_editing()).then_some(pos).flatten().map(|p|(p,self.t));}
+            if ctx.dragged_id().is_some() {self.swipe=None;}
+            if released {
+                if let (Some((start,at)),Some(end))=(self.swipe.take(),pos) {
+                    let d=end-start;
+                    if d.x.abs()>=48.0 && d.x.abs()>d.y.abs()*1.5 && self.t-at<1.2 {self.navigate_page(d.x<0.0);}
+                }
+            }
+        }
         let volume_dragging=self.music_volume_open && ctx.is_being_dragged(egui::Id::new(("card-drag",true,"m-volume-track")));
         let want = (inside && !self.hover_lock && (self.compact_notices()||self.notice.is_none()||self.open)) || self.open && on_notice || (self.open && self.t<self.forced_open_until) || self.drag_hot || volume_dragging || (self.is_editing() && self.open);
         self.morph(want, inside, env.t, dt);
@@ -2850,43 +2924,73 @@ impl App {
     }
 
     fn nav(&mut self, c: &Card) {
-        let pages: Vec<_>=self.settings.page_order.iter().copied().filter(|page|self.settings.visible_pages[*page]).collect();
+        let pages=self.page_sequence();
         if pages.len()<2 { return; }
         let arrow_y=if self.page==6||self.page==8{88.0}else{68.0};
-        let l = c.hit(8.0, arrow_y-13.0, 26.0, 26.0, "nav-l");
-        let r = c.hit(385.0, arrow_y-13.0, 26.0, 26.0, "nav-r");
+        let l = c.hit(8.0, arrow_y-13.0, 26.0, 26.0, "nav-l")
+            .on_hover_text("Previous page · ← key, swipe or Shift+wheel");
+        let r = c.hit(385.0, arrow_y-13.0, 26.0, 26.0, "nav-r")
+            .on_hover_text("Next page · → key, swipe or Shift+wheel");
+        l.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,"Previous page"));
+        r.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,"Next page"));
         let (lh, lp) = c.hover_t(&l);
         let (rh, rp) = c.hover_t(&r);
         paint::chevron(c, 21.0, arrow_y, -1.0, lh, lp);
         paint::chevron(c, 398.0, arrow_y, 1.0, rh, rp);
         if l.clicked() { self.navigate_page(false); }
         if r.clicked() { self.navigate_page(true); }
-        // 页码豆：宽度由弹簧驱动，整行实时居中；当前页是白色长条
-        let gap = 4.0;
-        let dot_y=self.expanded_height()-7.2;
-        let total: f32 = pages.iter().map(|page| self.dots[*page].pos).sum::<f32>() + gap * (pages.len()-1) as f32;
-        let mut x = PW / 2.0 - total / 2.0;
+        let dot_y = self.expanded_height()-7.2;
+        // Hovering the dot row turns it into a strip of named pages that can be clicked directly.
+        let zone = c.rect(12.0, dot_y-8.0, PW-24.0, 15.2);
+        let over = c.live && c.ui.rect_contains_pointer(zone);
+        let k = c.ui.ctx().animate_bool_with_time(egui::Id::new("nav-strip"), over, 0.12);
         let mut clicked = None;
-        for i in pages {
-            let w = self.dots[i].pos.max(3.0);
-            let on = anim::remap(w, 4.0, 16.0);
-            let col = paint::mix(Color32::from_rgb(92, 92, 96), theme::WHITE, on);
-            c.fill(x, dot_y - 2.0, w, 4.0, 2.0, col);
-            let hr = c.hit(x - 2.0, dot_y - 6.0, w + 4.0, 12.0, ("dot", i));
-            hr.clone().on_hover_text(PAGE_NAMES[i]);
-            if hr.hovered() && i != self.page {
-                c.fill(x - 1.0, dot_y - 3.0, w + 2.0, 6.0, 3.0, Color32::from_white_alpha(28));
+        // 页码豆：宽度由弹簧驱动，整行实时居中；当前页是白色长条
+        if k < 0.99 {
+            let d = c.faded(1.0-k);
+            let gap = 4.0;
+            let total: f32 = pages.iter().map(|page| self.dots[*page].pos).sum::<f32>() + gap * (pages.len()-1) as f32;
+            let mut x = PW / 2.0 - total / 2.0;
+            for &i in &pages {
+                let w = self.dots[i].pos.max(3.0);
+                let on = anim::remap(w, 4.0, 16.0);
+                let col = paint::mix(Color32::from_rgb(92, 92, 96), theme::WHITE, on);
+                d.fill(x, dot_y - 2.0, w, 4.0, 2.0, col);
+                if k < 0.5 {
+                    let hr = c.hit(x - gap / 2.0, dot_y - 8.0, w + gap, 15.0, ("dot", i));
+                    hr.widget_info(||egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel,true,i==self.page,PAGE_NAMES[i]));
+                    if hr.clicked() { clicked = Some(i); }
+                }
+                x += w + gap;
             }
-            if hr.clicked() {
-                clicked = Some(i);
+        }
+        if k > 0.01 {
+            let s = c.faded(k);
+            let (pad, gap) = (6.0, 3.0);
+            let text_w: f32 = pages.iter().map(|p| c.text_w(NAV_SHORT[*p], 9.5, W::Semibold)).sum();
+            let fixed = pages.len() as f32 * pad * 2.0 + (pages.len()-1) as f32 * gap;
+            let size = (9.5 * ((PW - 28.0 - fixed) / text_w)).clamp(7.5, 9.5);
+            let widths: Vec<f32> = pages.iter().map(|p| c.text_w(NAV_SHORT[*p], size, W::Semibold) + pad * 2.0).collect();
+            let total = widths.iter().sum::<f32>() + (pages.len()-1) as f32 * gap;
+            let (top, h) = (dot_y - 8.0, 14.0);
+            let mut x = PW / 2.0 - total / 2.0;
+            for (&i, &w) in pages.iter().zip(&widths) {
+                let current = i == self.page;
+                let hovered = if k >= 0.5 {
+                    let hr = c.hit(x - gap / 2.0, top - 1.0, w + gap, h + 3.0, ("nav-tab", i))
+                        .on_hover_text(format!("{} · key {}", PAGE_NAMES[i], pages.iter().position(|p| *p == i).unwrap() + 1));
+                    hr.widget_info(||egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel,true,current,PAGE_NAMES[i]));
+                    if hr.clicked() { clicked = Some(i); }
+                    hr.hovered()
+                } else { false };
+                let fill = if current { theme::WHITE } else if hovered { theme::BTN_HOVER } else { theme::BTN };
+                s.fill(x, top, w, h, h / 2.0, fill);
+                let ink = if current { Color32::from_gray(20) } else if hovered { theme::WHITE } else { Color32::from_gray(185) };
+                s.centered_text(x + w / 2.0, top + h / 2.0, NAV_SHORT[i], size, W::Semibold, ink, H::Center);
+                x += w + gap;
             }
-            x += w + gap;
         }
-        if let Some(i) = clicked {
-            let position=|page|self.settings.page_order.iter().position(|p|*p==page).unwrap();
-            let dir = if position(i) > position(self.page) { 1.0 } else { -1.0 };
-            self.go(i, dir);
-        }
+        if let Some(i) = clicked { self.jump_to_page(i); }
     }
 
     fn render_page(&mut self, page: usize, c: &Card, env: &Env, cmds: &mut Vec<Cmd>) {

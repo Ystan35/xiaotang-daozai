@@ -47,6 +47,8 @@ struct Shell {
     #[cfg(windows)]
     incoming: Option<daozai::system::Notifications>,
     #[cfg(windows)]
+    hotkey: std::sync::mpsc::Receiver<()>,
+    #[cfg(windows)]
     messengers:messenger::Runtime,
     #[cfg(windows)]
     unread_at:PollClock,
@@ -184,6 +186,7 @@ impl Shell {
             input_state:daozai::input::Monitor::new(initial_input),
             #[cfg(windows)] input_keys:daozai::input::Shortcuts::start(),
             #[cfg(windows)] incoming,
+            #[cfg(windows)] hotkey:daozai::system::hotkey(cc.egui_ctx.clone()),
             #[cfg(windows)] messengers:Default::default(),
             #[cfg(windows)] unread_at:PollClock::default(),
             #[cfg(windows)] opening_messenger:None,
@@ -445,6 +448,12 @@ impl eframe::App for Shell {
                     self.app.receive_messenger_reminder(unread);
                 }
             }}
+            while self.hotkey.try_recv().is_ok() {
+                // Take the foreground so arrow, number and Esc keys reach the island.
+                if self.app.toggle_keyboard_open() {
+                    if let Some(native)=&self.native {unsafe{let _=windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(native.hwnd());}}
+                }
+            }
             if let Some(rx)=&self.incoming {
                 rx.taskbar_settings(&self.app.settings);
                 while let Ok(event)=rx.try_recv(){match event {

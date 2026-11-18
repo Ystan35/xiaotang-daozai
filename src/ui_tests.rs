@@ -8494,3 +8494,94 @@ fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     assert!(h.app.clip_thumbs.is_empty(),"图片清空后缩略图缓存也释放");
 }
 
+
+fn open_on_music(h:&mut H){
+    h.hover(Pos2::new(WIN_W/2.0,12.0),1.0);h.app.show_page(0);h.hover(H::local(300.0,60.0),0.8);
+    assert_eq!(h.app.page,0);
+}
+fn key(h:&mut H,key:egui::Key){
+    for pressed in [true,false]{h.frame(vec![egui::Event::Key{key,physical_key:None,pressed,repeat:false,modifiers:Default::default()}]);}
+}
+
+#[test]
+fn horizontal_scroll_and_shift_wheel_turn_one_page_per_gesture(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();open_on_music(&mut h);
+    let wheel=|h:&mut H,delta:Vec2,shift:bool|h.frame(vec![egui::Event::PointerMoved(H::local(300.0,60.0)),egui::Event::MouseWheel{unit:egui::MouseWheelUnit::Point,delta,modifiers:egui::Modifiers{shift,..Default::default()}}]);
+    for _ in 0..6 {wheel(&mut h,Vec2::new(-12.0,0.0),false);}
+    assert_eq!(h.app.page,1,"一次触控板左滑只翻一页，惯性余量不再继续翻");
+    h.hover(H::local(300.0,60.0),0.5);
+    wheel(&mut h,Vec2::new(40.0,0.0),false);
+    assert_eq!(h.app.page,0,"右滑回到上一页");
+    h.hover(H::local(300.0,60.0),0.5);
+    wheel(&mut h,Vec2::new(0.0,-40.0),true);
+    assert_eq!(h.app.page,1,"Shift+滚轮按横向翻页");
+    // Over a scrollable list the vertical wheel scrolls the list, but horizontal input still pages.
+    h.app.show_page(4);for i in 0..8 {h.app.todos.items.push(crate::model::TodoItem{text:format!("Task {i}"),..Default::default()});}
+    h.hover(H::local(300.0,60.0),0.5);
+    wheel(&mut h,Vec2::new(-40.0,0.0),false);
+    assert_ne!(h.app.page,4,"列表区域内横向输入仍然翻页");
+}
+
+#[test]
+fn horizontal_drag_on_the_card_swipes_pages_but_vertical_drags_do_not(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();open_on_music(&mut h);
+    let drag=|h:&mut H,from:Pos2,to:Pos2|{
+        h.frame(vec![egui::Event::PointerMoved(from)]);
+        h.frame(vec![egui::Event::PointerButton{pos:from,button:egui::PointerButton::Primary,pressed:true,modifiers:Default::default()}]);
+        for k in 1..=6 {let p=from+(to-from)*(k as f32/6.0);h.cursor=Some(p);h.frame(vec![egui::Event::PointerMoved(p)]);}
+        h.frame(vec![egui::Event::PointerButton{pos:to,button:egui::PointerButton::Primary,pressed:false,modifiers:Default::default()}]);
+    };
+    drag(&mut h,H::local(260.0,40.0),H::local(170.0,46.0));
+    assert_eq!(h.app.page,1,"向左拖动翻到下一页");
+    h.hover(H::local(300.0,60.0),0.5);
+    drag(&mut h,H::local(170.0,40.0),H::local(260.0,44.0));
+    assert_eq!(h.app.page,0,"向右拖动回到上一页");
+    h.hover(H::local(300.0,60.0),0.5);
+    drag(&mut h,H::local(200.0,30.0),H::local(230.0,110.0));
+    assert_eq!(h.app.page,0,"以纵向为主的拖动不翻页");
+    h.hover(H::local(300.0,60.0),0.5);
+    drag(&mut h,H::local(200.0,40.0),H::local(180.0,40.0));
+    assert_eq!(h.app.page,0,"短距离拖动不翻页");
+}
+
+#[test]
+fn number_home_and_end_keys_jump_between_visible_pages(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();open_on_music(&mut h);
+    let sequence=h.app.page_sequence();
+    key(&mut h,egui::Key::Num3);assert_eq!(h.app.page,sequence[2]);
+    h.hover(H::local(300.0,60.0),0.5);key(&mut h,egui::Key::End);assert_eq!(h.app.page,*sequence.last().unwrap());
+    h.hover(H::local(300.0,60.0),0.5);key(&mut h,egui::Key::Home);assert_eq!(h.app.page,sequence[0]);
+    h.app.settings.visible_pages[1]=false;
+    h.hover(H::local(300.0,60.0),0.5);key(&mut h,egui::Key::Num2);assert_eq!(h.app.page,h.app.page_sequence()[1],"数字键按可见页面计数");
+}
+
+#[test]
+fn hovering_the_dots_shows_named_pages_that_can_be_clicked(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();open_on_music(&mut h);
+    assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="Weather")),"平时只显示圆点");
+    let row=H::local(PW/2.0,h.app.expanded_height()-7.2);
+    h.hover(row,0.5);
+    let labels:Vec<_>=crate::app::NAV_SHORT.iter().map(|label|h.shapes.iter().find_map(|s|match &s.shape{egui::Shape::Text(t)if t.galley.text()==*label=>Some((s.clip_rect,t.visual_bounding_rect())),_=>None}).unwrap_or_else(||panic!("缺少页面名 {label}"))).collect();
+    for (i,(clip,rect)) in labels.iter().enumerate(){
+        assert!(clip.contains_rect(*rect),"页面名 {} 被裁切",crate::app::NAV_SHORT[i]);
+        if i>0 {assert!(labels[i-1].1.right()<rect.left(),"页面名不能重叠");}
+    }
+    h.click_text("Weather");
+    assert_eq!(h.app.page,8);
+}
+
+#[test]
+fn keyboard_open_works_without_hovering_and_closes_with_escape(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
+    h.cursor=None;
+    assert!(h.app.toggle_keyboard_open());
+    for _ in 0..60 {h.frame(vec![]);}
+    assert!(h.app.open && h.app.progress()>0.95,"快捷键打开后无需鼠标停留");
+    let page=h.app.page;key(&mut h,egui::Key::ArrowRight);assert_ne!(h.app.page,page,"键盘可直接翻页");
+    for _ in 0..300 {h.frame(vec![]);}
+    assert!(h.app.open,"键盘模式不会因为鼠标不在岛上而收起");
+    key(&mut h,egui::Key::Escape);assert!(!h.app.key_open);
+    for _ in 0..60 {h.frame(vec![]);}
+    assert!(!h.app.open,"Esc 后收起");
+    assert!(h.app.toggle_keyboard_open());assert!(!h.app.toggle_keyboard_open(),"再按一次快捷键关闭");
+}

@@ -842,3 +842,26 @@ mod avoidance_tests {
         if notepad.exists(){assert!(executable_description(notepad.to_str().unwrap()).is_some());}
     }
 }
+
+/// Global hotkey Ctrl+Alt+D: opens the island for the keyboard from anywhere.
+/// Registered on its own thread, which owns the message queue that WM_HOTKEY is posted to.
+pub fn hotkey(ctx: eframe::egui::Context) -> Receiver<()> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT};
+    use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY};
+    let (tx, rx) = mpsc::channel();
+    let _ = std::thread::Builder::new().name("daozai-hotkey".into()).spawn(move || unsafe {
+        if RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44).is_err() {
+            eprintln!("[hotkey] Ctrl+Alt+D is already taken by another app");
+            return;
+        }
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
+            if msg.message == WM_HOTKEY {
+                if tx.send(()).is_err() { break; }
+                ctx.request_repaint();
+            }
+        }
+        let _ = UnregisterHotKey(None, 1);
+    });
+    rx
+}
