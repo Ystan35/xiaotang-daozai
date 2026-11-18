@@ -6,9 +6,17 @@ use crate::theme::{self, W};
 use eframe::egui::{self, Color32, Rect};
 use std::sync::mpsc::Receiver;
 
-pub(crate) const BODY: (f32, f32, f32, f32) = (42.0, 72.0, 335.0, ASK_H - 72.0 - 42.0);
+/// Answers on top, the text field just above the action row, like a chat app.
+pub(crate) const BODY: (f32, f32, f32, f32) = (42.0, 36.0, 335.0, ASK_H - 36.0 - 78.0);
+const FIELD: (f32, f32, f32, f32) = (42.0, ASK_H - 72.0, 335.0, 28.0);
 const ACTIONS_Y: f32 = ASK_H - 37.0;
 const PRUNE_EVERY: f64 = 600.0;
+
+pub(crate) struct Attachment {
+    pub image: ask::Image,
+    pub thumb: Option<egui::ColorImage>,
+    pub texture: Option<egui::TextureHandle>,
+}
 
 #[derive(Default)]
 pub(crate) struct AskState {
@@ -17,12 +25,18 @@ pub(crate) struct AskState {
     pub history: History,
     pub thread: u64,
     pub pending: Option<(Receiver<Result<String, String>>, String)>,
+    pub pending_image: bool,
+    pub attachment: Option<Attachment>,
     pub show_history: bool,
     pub has_key: bool,
     pub key_buf: String,
     pub key_status: Option<(String, bool)>,
     pub pruned_at: f64,
     pub was_on_page: bool,
+    /// Focus the field on the next frame (hotkey, new picture).
+    pub want_focus: bool,
+    /// Let go of the field on the next frame (before a screen snip).
+    pub release: bool,
 }
 
 impl AskState {
@@ -54,14 +68,73 @@ pub(crate) fn keep_label(days: u32) -> String {
     match days { 0 => "Off".into(), 1 => "1 day".into(), d => format!("{d} days") }
 }
 
+fn thumbnail(img: &ask::Image) -> Option<egui::ColorImage> {
+    let decoded = image::load_from_memory(&img.data).ok()?.thumbnail(120, 72).to_rgba8();
+    Some(egui::ColorImage::from_rgba_unmultiplied([decoded.width() as usize, decoded.height() as usize], decoded.as_raw()))
+}
+
+fn with_image_tag(q: &str, image: bool) -> String { if image { format!("[image] {q}") } else { q.to_string() } }
+
 impl App {
+    /// Ctrl+Alt+Space: opens the island on Ask with the cursor in the field; again closes it.
+    pub fn toggle_ask(&mut self) -> bool {
+        if self.key_open && self.open && self.page == ASK_PAGE { self.close_keyboard_open(); self.ask.release = true; self.hover_lock = true; return false; }
+        self.open_ask();
+        true
+    }
+
+    fn open_ask(&mut self) {
+        if !self.module_on(ASK_PAGE) { self.set_page_visible(ASK_PAGE, true); }
+        if self.page != ASK_PAGE { self.show_page(ASK_PAGE); }
+        self.reveal_unread();
+        self.forced_open_until = f64::INFINITY;
+        self.key_open = true;
+        self.key_open_at = self.t;
+        self.ask.show_history = false;
+        self.ask.want_focus = true;
+    }
+
+    /// Attaches a picture (snip, file or paste) and opens Ask ready to type.
+    pub fn ask_attach(&mut self, img: &crate::clipboard_image::Rgba) -> bool {
+        match ask::prepare_image(img) {
+            Some(image) => {
+                let thumb = thumbnail(&image);
+                self.ask.attachment = Some(Attachment { image, thumb, texture: None });
+                self.open_ask();
+                true
+            }
+            None => { self.say("Couldn't read that picture"); false }
+        }
+    }
+
+    pub fn ask_attach_file(&mut self, path: &std::path::Path) -> bool {
+        match ask::load_image_file(path) {
+            Ok(img) => self.ask_attach(&img),
+            Err(e) => { self.say(e); false }
+        }
+    }
+
+    /// Collapses the island so it isn't in the screen snip.
+    pub fn ask_before_snip(&mut self) {
+        self.close_keyboard_open();
+        self.ask.release = true;
+        self.ask.focused = false;
+        self.hover_lock = true;
+    }
+
     /// Sends the current input (or `question`) to Gemini on a background thread.
     pub(crate) fn ask_submit(&mut self, question: String, ctx: Option<egui::Context>) -> bool {
-        let question = question.trim().to_string();
-        if question.is_empty() || self.ask.pending.is_some() { return false; }
+        let mut question = question.trim().to_string();
+        if self.ask.pending.is_some() { return false; }
+        if question.is_empty() {
+            if self.ask.attachment.is_none() { return false; }
+            question = ask::IMAGE_ONLY_QUESTION.into();
+        }
         if !self.ask.has_key { self.say("Add your Gemini key in Settings > Ask"); return false; }
         let context: Vec<(String, String)> = self.ask.thread_entries().iter().filter(|e| !e.error).map(|e| (e.q.clone(), e.a.clone())).collect();
-        let rx = ask::spawn(self.settings.ask_model.clone(), context, question.clone(), ctx);
+        let image = self.ask.attachment.take().map(|a| a.image);
+        self.ask.pending_image = image.is_some();
+        let rx = ask::spawn(self.settings.ask_model.clone(), context, question.clone(), image, ctx);
         self.ask.pending = Some((rx, question));
         self.ask.show_history = false;
         true
@@ -72,7 +145,8 @@ impl App {
         let error = result.is_err();
         let a = result.unwrap_or_else(|e| e);
         if error && a.contains("API key") && !a.contains("region") { self.ask.has_key = ask::load_key().is_some(); }
-        self.ask.history.entries.push(Entry { q: question, a, at: ask::now_secs(), thread: self.ask.thread, error });
+        let image = std::mem::take(&mut self.ask.pending_image);
+        self.ask.history.entries.push(Entry { q: question, a, at: ask::now_secs(), thread: self.ask.thread, error, image });
         self.ask.history.prune(self.settings.ask_keep_days, ask::now_secs());
         if !error { self.ask.history.save(self.settings.ask_keep_days); }
     }
@@ -98,19 +172,47 @@ impl App {
         self.ask.buf.clear();
     }
 
-    pub(crate) fn page_ask(&mut self, c: &Card, cmds: &mut Vec<Cmd>) {
+    fn ask_input(&mut self, c: &Card, cmds: &mut Vec<Cmd>) {
         let ctx = c.ui.ctx().clone();
-        let entries_now = self.ask.thread_entries().len();
-        // Input field.
-        let (fx, fy, fw, fh) = (42.0, 38.0, 335.0, 26.0);
+        let (fx, fy, fw, fh) = FIELD;
         c.fill(fx, fy, fw, fh, fh / 2.0, theme::BTN);
         if self.ask.focused { c.stroke(fx, fy, fw, fh, fh / 2.0, 1.0, theme::BLUE.gamma_multiply(0.7)); }
-        let rect = c.rect(fx + 12.0, fy + 5.0, fw - 52.0, 17.0);
+        // Attached picture: a small thumbnail at the left end; click it to remove.
+        let mut text_x = fx + 13.0;
+        let mut remove = false;
+        if let Some(att) = &mut self.ask.attachment {
+            if att.texture.is_none() { if let Some(thumb) = att.thumb.take() { att.texture = Some(ctx.load_texture("ask-attachment", thumb, egui::TextureOptions::LINEAR)); } }
+            let (tw, th) = (34.0, 20.0);
+            let r = c.hit(fx + 5.0, fy + 4.0, tw, th, "ask-thumb").on_hover_text(format!("{}×{} picture · click to remove", att.image.w, att.image.h));
+            let rect = c.rect(fx + 5.0, fy + 4.0, tw, th);
+            match &att.texture {
+                Some(tex) => {
+                    let size = tex.size_vec2();
+                    let scale = (rect.width() / size.x).max(rect.height() / size.y);
+                    let shown = egui::vec2(rect.width() / (size.x * scale), rect.height() / (size.y * scale));
+                    let uv = Rect::from_center_size(egui::pos2(0.5, 0.5), shown);
+                    c.painter.add(egui::epaint::RectShape::filled(rect, 5.0 * c.s, Color32::WHITE).with_texture(tex.id(), uv));
+                }
+                None => c.fill(fx + 5.0, fy + 4.0, tw, th, 5.0, theme::BTN_HOVER),
+            }
+            if r.hovered() {
+                c.fill(fx + 5.0, fy + 4.0, tw, th, 5.0, Color32::from_black_alpha(150));
+                crate::paint::close(c, fx + 5.0 + tw / 2.0, fy + 4.0 + th / 2.0, 3.5, theme::WHITE);
+            }
+            remove = r.clicked();
+            text_x = fx + 5.0 + tw + 8.0;
+        }
+        if remove { self.ask.attachment = None; }
+        let icons_w = 76.0;
+        let rect = c.rect(text_x, fy + 6.0, fx + fw - icons_w - text_x, 17.0);
         let mut ui = egui::Ui::new(ctx.clone(), egui::Id::new(("ask-input-ui", c.live)), egui::UiBuilder::new().max_rect(rect).layer_id(c.painter.layer_id()).style(c.ui.style().clone()));
         ui.set_clip_rect(rect.intersect(c.painter.clip_rect()));
         ui.set_opacity(c.painter.opacity());
         if !c.live || !self.ask.has_key { ui.disable(); }
-        let hint = if !self.ask.has_key { "Add a Gemini key to start" } else if self.ask.pending.is_some() { "Thinking…" } else { "Ask anything · Enter to send" };
+        let hint = if !self.ask.has_key { "Add a Gemini key to start" }
+            else if self.ask.pending.is_some() { "Thinking…" }
+            else if self.ask.attachment.is_some() { "Ask about this picture" }
+            else { "Ask anything · Enter to send" };
         let mut buf = std::mem::take(&mut self.ask.buf);
         let resp = ui.add(egui::TextEdit::singleline(&mut buf)
             .id(egui::Id::new(("ask-input", c.live)))
@@ -121,45 +223,90 @@ impl App {
             .hint_text(egui::RichText::new(hint).color(theme::DIM).font(c.font(theme::size::BODY, W::Regular)))
             .desired_width(rect.width()));
         self.ask.buf = buf;
-        let send = c.hit(fx + fw - 40.0, fy, 40.0, fh, "ask-send").on_hover_text("Send (Enter)");
+
+        // Right end: snip a screen area, pick a picture file, send.
+        let cy = fy + fh / 2.0;
+        let icon = |x: f32, id: &str, hint: &str| -> (egui::Response, f32) {
+            let r = c.hit(x - 11.0, fy + 2.0, 22.0, fh - 4.0, id).on_hover_text(hint);
+            let (h, _) = c.hover_t(&r);
+            if h > 0.01 { c.circle(x, cy, 10.5, crate::paint::mix(theme::BTN, theme::BTN_HOVER, h)); }
+            (r, h)
+        };
+        let enabled = self.ask.has_key && self.ask.pending.is_none();
+        let ink = if enabled { Color32::from_gray(205) } else { Color32::from_gray(110) };
+        let (snip, _) = icon(fx + fw - 64.0, "ask-snip", "Snip part of the screen and ask about it");
+        {
+            // Corner brackets of a selection box.
+            let (x, y, s, k) = (fx + fw - 64.0, cy, 6.0, 3.0);
+            for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let (px, py) = (x + dx * s, y + dy * s * 0.8);
+                c.path(&[(px - dx * k, py), (px, py), (px, py - dy * k)], 1.4, ink);
+            }
+        }
+        let (file, _) = icon(fx + fw - 41.0, "ask-image", "Attach a picture file (or paste one with Ctrl+V)");
+        {
+            let (x, y) = (fx + fw - 41.0, cy);
+            c.stroke(x - 6.5, y - 5.0, 13.0, 10.0, 2.0, 1.3, ink);
+            c.path(&[(x - 5.0, y + 3.5), (x - 1.5, y - 0.5), (x + 1.0, y + 2.0), (x + 2.5, y + 0.5), (x + 5.0, y + 3.5)], 1.2, ink);
+            c.circle(x + 2.6, y - 2.4, 1.1, ink);
+        }
+        let send = c.hit(fx + fw - 28.0, fy, 28.0, fh, "ask-send").on_hover_text("Send (Enter)");
         let (sh, _) = c.hover_t(&send);
         if self.ask.pending.is_some() {
             let n = ((self.t * 3.0) as usize) % 4;
-            c.text(fx + fw - 20.0, fy + 17.5, &"•".repeat(n.max(1)), 11.0, W::Bold, theme::BLUE, H::Center);
+            c.text(fx + fw - 16.0, fy + 18.5, &"•".repeat(n.max(1)), 11.0, W::Bold, theme::BLUE, H::Center);
             ctx.request_repaint_after(std::time::Duration::from_millis(120));
         } else {
-            let ready = !self.ask.buf.trim().is_empty();
-            c.circle(fx + fw - 18.0, fy + fh / 2.0, 9.5, if ready { theme::BLUE } else { crate::paint::mix(theme::BTN_HOVER, Color32::from_gray(80), sh) });
-            c.path(&[(fx + fw - 22.0, fy + 13.5), (fx + fw - 18.0, fy + 9.0), (fx + fw - 14.0, fy + 13.5)], 1.6, theme::WHITE);
-            c.seg((fx + fw - 18.0, fy + 9.5), (fx + fw - 18.0, fy + 17.5), 1.6, theme::WHITE);
+            let ready = !self.ask.buf.trim().is_empty() || self.ask.attachment.is_some();
+            let x = fx + fw - 16.0;
+            c.circle(x, cy, 10.0, if ready { theme::BLUE } else { crate::paint::mix(theme::BTN_HOVER, Color32::from_gray(80), sh) });
+            c.path(&[(x - 4.0, cy - 0.5), (x, cy - 4.5), (x + 4.0, cy - 0.5)], 1.6, theme::WHITE);
+            c.seg((x, cy - 4.0), (x, cy + 4.5), 1.6, theme::WHITE);
         }
-        if c.live {
-            // Enter makes a single-line field drop focus in the same frame, so use last frame's focus.
-            let enter = (self.ask.focused || resp.has_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if resp.clicked() || resp.gained_focus() { cmds.push(Cmd::Focus); }
-            if self.key_open && self.ask.has_key && !self.ask.was_on_page { resp.request_focus(); cmds.push(Cmd::Focus); }
-            self.ask.was_on_page = true;
-            if enter || send.clicked() {
-                let q = std::mem::take(&mut self.ask.buf);
-                if !self.ask_submit(q.clone(), Some(ctx.clone())) { self.ask.buf = q; }
-                resp.request_focus();
-            }
-            // Clicking another app releases the field so the island can close again.
-            if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::WindowFocused(false)))) { resp.surrender_focus(); self.ask.focused = false; } else { self.ask.focused = resp.has_focus(); }
+        if !c.live { return; }
+        if enabled && snip.clicked() { cmds.push(Cmd::AskSnip); }
+        if enabled && file.clicked() { cmds.push(Cmd::AskPickImage); }
+        if resp.clicked() || resp.gained_focus() { cmds.push(Cmd::Focus); }
+        let arrived = self.key_open && !self.ask.was_on_page;
+        if self.ask.has_key && (self.ask.want_focus || arrived) { resp.request_focus(); cmds.push(Cmd::Focus); }
+        self.ask.want_focus = false;
+        self.ask.was_on_page = true;
+        let was_focused = self.ask.focused;
+        // Enter makes a single-line field drop focus in the same frame, so use last frame's focus.
+        let (enter, esc, paste_key, pasted_text) = ui.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape),
+            i.events.iter().any(|e| matches!(e, egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. } if modifiers.command)),
+            i.events.iter().any(|e| matches!(e, egui::Event::Paste(_)))));
+        if (was_focused || resp.has_focus()) && enter || send.clicked() {
+            let q = std::mem::take(&mut self.ask.buf);
+            if !self.ask_submit(q.clone(), Some(ctx.clone())) { self.ask.buf = q; }
+            resp.request_focus();
         }
+        // Ctrl+V with a picture (and no text) on the clipboard attaches the picture.
+        if (was_focused || resp.has_focus()) && paste_key && !pasted_text { cmds.push(Cmd::AskPasteImage); }
+        // Esc in the field closes an island that a hotkey opened.
+        if was_focused && esc && self.key_open { self.close_keyboard_open(); self.hover_lock = true; }
+        let lost_window = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::WindowFocused(false))));
+        if std::mem::take(&mut self.ask.release) || lost_window { resp.surrender_focus(); self.ask.focused = false; }
+        else { self.ask.focused = resp.has_focus(); }
+    }
+
+    pub(crate) fn page_ask(&mut self, c: &Card, cmds: &mut Vec<Cmd>) {
+        let ctx = c.ui.ctx().clone();
+        let entries_now = self.ask.thread_entries().len();
+        self.ask_input(c, cmds);
 
         // Body.
         let (bx, by, bw, bh) = BODY;
         if !self.ask.has_key {
-            c.text(bx, by + 18.0, "Ask Gemini quick questions right from the island.", 12.0, W::Regular, theme::WHITE, H::Left);
-            c.text(bx, by + 36.0, "Paste a free Google AI Studio key in Settings > Ask.", 11.0, W::Regular, theme::DIM, H::Left);
+            c.text(bx, by + 22.0, "Ask Gemini quick questions right from the island.", 12.0, W::Regular, theme::WHITE, H::Left);
+            c.text(bx, by + 40.0, "Paste a free Google AI Studio key in Settings > Ask.", 11.0, W::Regular, theme::DIM, H::Left);
             let w = c.text_w("Open settings", 11.0, W::Semibold) + 22.0;
-            let (r, inner) = capsule(c, bx, by + 50.0, w, 24.0, "ask-open-settings", theme::BLUE_DEEP, theme::BLUE.gamma_multiply(0.6));
-            inner.centered_text(bx + w / 2.0, by + 62.0, "Open settings", 11.0, W::Semibold, theme::WHITE, H::Center);
+            let (r, inner) = capsule(c, bx, by + 54.0, w, 24.0, "ask-open-settings", theme::BLUE_DEEP, theme::BLUE.gamma_multiply(0.6));
+            inner.centered_text(bx + w / 2.0, by + 66.0, "Open settings", 11.0, W::Semibold, theme::WHITE, H::Center);
             if r.clicked() { self.settings_tab = 13; self.open_settings(); }
             let w2 = c.text_w("Get a free key ↗", 11.0, W::Semibold) + 22.0;
-            let (r2, inner2) = capsule(c, bx + w + 8.0, by + 50.0, w2, 24.0, "ask-get-key", theme::BTN, theme::BTN_HOVER);
-            inner2.centered_text(bx + w + 8.0 + w2 / 2.0, by + 62.0, "Get a free key ↗", 11.0, W::Semibold, theme::WHITE, H::Center);
+            let (r2, inner2) = capsule(c, bx + w + 8.0, by + 54.0, w2, 24.0, "ask-get-key", theme::BTN, theme::BTN_HOVER);
+            inner2.centered_text(bx + w + 8.0 + w2 / 2.0, by + 66.0, "Get a free key ↗", 11.0, W::Semibold, theme::WHITE, H::Center);
             if r2.on_hover_text(ask::KEY_URL).clicked() { cmds.push(Cmd::OpenUrl(ask::KEY_URL.into())); }
             return;
         }
@@ -211,7 +358,7 @@ impl App {
                 }
                 for (thread, first, count, last) in &threads {
                     let more = if *count > 1 { format!("  +{}", count - 1) } else { String::new() };
-                    let text = format!("{}{}", c.fit(&first.q, 11.0, W::Semibold, 250.0), more);
+                    let text = format!("{}{}", c.fit(&with_image_tag(&first.q, first.image), 11.0, W::Semibold, 250.0), more);
                     ui.horizontal(|ui| {
                         let r = ui.add(egui::Button::new(egui::RichText::new(text).font(q_font.clone()).color(theme::WHITE)).frame(false));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { ui.label(egui::RichText::new(ago(now, *last)).font(small.clone()).color(theme::DIM)); });
@@ -232,17 +379,18 @@ impl App {
             return;
         }
         let entries: Vec<Entry> = self.ask.thread_entries().into_iter().cloned().collect();
-        let pending_q = self.ask.pending.as_ref().map(|(_, q)| q.clone());
+        let pending_q = self.ask.pending.as_ref().map(|(_, q)| with_image_tag(q, self.ask.pending_image));
         if entries.is_empty() && pending_q.is_none() {
-            c.text(bx, by + 16.0, "Ask a quick question. Answers stay short.", 12.0, W::Regular, theme::WHITE, H::Left);
+            c.text(bx, by + 20.0, "Ask a quick question, or snip the screen to ask about it.", 12.0, W::Regular, theme::WHITE, H::Left);
             let keep = if self.settings.ask_keep_days == 0 { "History is off.".to_string() } else { format!("History is kept for {}, then deleted.", keep_label(self.settings.ask_keep_days)) };
-            c.text(bx, by + 33.0, &format!("{} · {}", ask::model_label(&self.settings.ask_model), keep), 10.5, W::Regular, theme::DIM, H::Left);
+            c.text(bx, by + 38.0, &format!("{} · {}", ask::model_label(&self.settings.ask_model), keep), 10.5, W::Regular, theme::DIM, H::Left);
+            c.text(bx, by + 56.0, "Ctrl+Alt+Space opens Ask from anywhere.", 10.5, W::Regular, theme::DIM, H::Left);
             return;
         }
         egui::ScrollArea::vertical().id_salt(("ask-thread-scroll", self.ask.thread)).max_height(bh * c.s).auto_shrink([false, false]).stick_to_bottom(true).show(&mut content, |ui| {
             for (i, e) in entries.iter().enumerate() {
                 if i > 0 { ui.add_space(5.0); }
-                ui.add(egui::Label::new(egui::RichText::new(&e.q).font(q_font.clone()).color(theme::DIM)).wrap());
+                ui.add(egui::Label::new(egui::RichText::new(with_image_tag(&e.q, e.image)).font(q_font.clone()).color(theme::DIM)).wrap());
                 ui.add(egui::Label::new(egui::RichText::new(&e.a).font(a_font.clone()).color(if e.error { Color32::from_rgb(255, 150, 120) } else { theme::WHITE })).wrap().selectable(!e.error));
             }
             if let Some(q) = &pending_q {
@@ -313,6 +461,9 @@ impl App {
             });
         });
         settings_hint(ui, "Older questions are deleted automatically. Off keeps nothing on disk.");
+        settings_label(ui, "Shortcuts and pictures");
+        settings_hint(ui, "Ctrl+Alt+Space opens Ask from any app with the cursor in the text box; Esc or the same keys close it.");
+        settings_hint(ui, "Snip (the corner-brackets button) lets you select part of the screen; the picture is attached to your next question. You can also attach a picture file or paste one with Ctrl+V. Pictures are sent only with that question and never saved.");
         settings_hint(ui, "Questions are sent to Google's Gemini API. On the free tier Google may use them to improve its products, so avoid sending private data.");
     }
 }

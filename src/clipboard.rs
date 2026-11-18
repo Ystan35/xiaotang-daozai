@@ -241,6 +241,13 @@ pub fn watch(shared: Shared, repaint: impl Fn() + Send + 'static) -> Option<Watc
     Some(Watcher { stop })
 }
 
+/// An image currently on the clipboard (for attaching to Ask).
+#[cfg(windows)] pub fn read_image() -> Option<crate::clipboard_image::Rgba> { win::read_image() }
+#[cfg(not(windows))] pub fn read_image() -> Option<crate::clipboard_image::Rgba> { None }
+/// Changes whenever anything is copied; used to notice a finished screen snip.
+#[cfg(windows)] pub fn sequence() -> u32 { win::sequence() }
+#[cfg(not(windows))] pub fn sequence() -> u32 { 0 }
+
 #[cfg(not(windows))]
 pub fn watch(_shared: Shared, _repaint: impl Fn() + Send + 'static) -> Option<Watcher> { Some(Watcher {}) }
 
@@ -328,6 +335,26 @@ mod win {
     }
 
     enum Raw { Png(Vec<u8>), Dib(Vec<u8>) }
+
+    /// Reads an image (PNG preferred, else DIB) from the clipboard, ignoring text.
+    pub fn read_image() -> Option<crate::clipboard_image::Rgba> {
+        unsafe {
+            const CF_DIB: u32 = 8;
+            let png = RegisterClipboardFormatW(w!("PNG"));
+            let has_png = png != 0 && IsClipboardFormatAvailable(png).is_ok();
+            if !has_png && IsClipboardFormatAvailable(CF_DIB).is_err() { return None; }
+            let mut opened = false;
+            for _ in 0..5 {
+                if OpenClipboard(HWND::default()).is_ok() { opened = true; break; }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            if !opened { return None; }
+            let raw = if has_png { bytes(png).map(Raw::Png) } else { None }.or_else(|| bytes(CF_DIB).map(Raw::Dib));
+            let _ = CloseClipboard();
+            raw.and_then(decode)
+        }
+    }
+    pub fn sequence() -> u32 { unsafe { GetClipboardSequenceNumber() } }
     enum Content { Text(String), Image(Raw) }
 
     /// 剪贴板关着以后再解码，不占着剪贴板。

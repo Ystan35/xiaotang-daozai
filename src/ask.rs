@@ -50,6 +50,9 @@ pub struct Entry {
     pub thread: u64,
     #[serde(default)]
     pub error: bool,
+    /// The question came with a picture (the picture itself is never saved).
+    #[serde(default)]
+    pub image: bool,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -95,15 +98,54 @@ impl History {
     pub fn latest_thread(&self) -> Option<u64> { self.entries.last().map(|e| e.thread) }
 }
 
+// ---------- images ----------
+/// A picture ready to send: re-encoded as JPEG and no larger than `MAX_EDGE`.
+#[derive(Clone, Debug)]
+pub struct Image { pub mime: &'static str, pub data: Vec<u8>, pub w: u32, pub h: u32 }
+const MAX_EDGE: u32 = 1600;
+const MAX_FILE: u64 = 25 << 20;
+
+pub fn prepare_image(img: &crate::clipboard_image::Rgba) -> Option<Image> {
+    if img.w == 0 || img.h == 0 || img.px.len() != img.w as usize * img.h as usize * 4 { return None; }
+    let rgba = image::RgbaImage::from_raw(img.w, img.h, img.px.clone())?;
+    let mut dynamic = image::DynamicImage::ImageRgba8(rgba);
+    if img.w.max(img.h) > MAX_EDGE { dynamic = dynamic.resize(MAX_EDGE, MAX_EDGE, image::imageops::FilterType::Triangle); }
+    // Flatten any transparency onto white so JPEG doesn't turn it black.
+    let mut rgb = image::RgbImage::new(dynamic.width(), dynamic.height());
+    for (x, y, p) in dynamic.to_rgba8().enumerate_pixels() {
+        let a = p[3] as u32;
+        let mix = |c: u8| ((c as u32 * a + 255 * (255 - a)) / 255) as u8;
+        rgb.put_pixel(x, y, image::Rgb([mix(p[0]), mix(p[1]), mix(p[2])]));
+    }
+    let mut data = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut data, 85).encode_image(&rgb).ok()?;
+    Some(Image { mime: "image/jpeg", data, w: rgb.width(), h: rgb.height() })
+}
+
+pub fn load_image_file(path: &std::path::Path) -> Result<crate::clipboard_image::Rgba, String> {
+    let size = std::fs::metadata(path).map_err(|_| "Can't open that file".to_string())?.len();
+    if size > MAX_FILE { return Err("That image is too large (25 MB max)".into()); }
+    let img = image::open(path).map_err(|_| "That file isn't a PNG, JPEG or WebP image".to_string())?.to_rgba8();
+    Ok(crate::clipboard_image::Rgba { w: img.width(), h: img.height(), px: img.into_raw() })
+}
+
+pub const IMAGE_ONLY_QUESTION: &str = "What's in this image?";
+
 // ---------- request ----------
-pub fn request_body(context: &[(String, String)], question: &str) -> serde_json::Value {
+pub fn request_body(context: &[(String, String)], question: &str, image: Option<&Image>) -> serde_json::Value {
     let mut contents = Vec::new();
     let skip = context.len().saturating_sub(CONTEXT_TURNS);
     for (q, a) in &context[skip..] {
         contents.push(serde_json::json!({"role":"user","parts":[{"text":q}]}));
         contents.push(serde_json::json!({"role":"model","parts":[{"text":a}]}));
     }
-    contents.push(serde_json::json!({"role":"user","parts":[{"text":question}]}));
+    let mut parts = Vec::new();
+    if let Some(img) = image {
+        use base64::Engine;
+        parts.push(serde_json::json!({"inline_data":{"mime_type":img.mime,"data":base64::engine::general_purpose::STANDARD.encode(&img.data)}}));
+    }
+    parts.push(serde_json::json!({"text":question}));
+    contents.push(serde_json::json!({"role":"user","parts":parts}));
     serde_json::json!({
         "systemInstruction": {"parts":[{"text":SYSTEM}]},
         "contents": contents,
@@ -150,11 +192,11 @@ pub fn error_message(status: u16, body: &str) -> String {
     }
 }
 
-pub fn ask(model: &str, key: &str, context: &[(String, String)], question: &str) -> Result<String, String> {
+pub fn ask(model: &str, key: &str, context: &[(String, String)], question: &str, image: Option<&Image>) -> Result<String, String> {
     if cfg!(test) { return Err("Network is disabled in tests".into()); }
     let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent");
-    let agent = crate::quota::http_agent_long(std::time::Duration::from_secs(45));
-    let body = request_body(context, question);
+    let agent = crate::quota::http_agent_long(std::time::Duration::from_secs(if image.is_some() { 75 } else { 45 }));
+    let body = request_body(context, question, image);
     match agent.post(&url).set("x-goog-api-key", key).set("Content-Type", "application/json").send_string(&body.to_string()) {
         Ok(resp) => {
             let text = resp.into_string().map_err(|_| "Couldn't read Gemini's answer".to_string())?;
@@ -167,11 +209,11 @@ pub fn ask(model: &str, key: &str, context: &[(String, String)], question: &str)
 }
 
 /// Runs a question on a background thread; the receiver yields once.
-pub fn spawn(model: String, context: Vec<(String, String)>, question: String, ctx: Option<eframe::egui::Context>) -> Receiver<Result<String, String>> {
+pub fn spawn(model: String, context: Vec<(String, String)>, question: String, image: Option<Image>, ctx: Option<eframe::egui::Context>) -> Receiver<Result<String, String>> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         let result = match load_key() {
-            Some(key) => ask(&model, &key, &context, &question),
+            Some(key) => ask(&model, &key, &context, &question, image.as_ref()),
             None => Err("Add your Google AI Studio key in Settings > Ask".into()),
         };
         let _ = tx.send(result);
@@ -183,7 +225,7 @@ pub fn spawn(model: String, context: Vec<(String, String)>, question: String, ct
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn e(q: &str, at: u64, thread: u64) -> Entry { Entry { q: q.into(), a: "a".into(), at, thread, error: false } }
+    fn e(q: &str, at: u64, thread: u64) -> Entry { Entry { q: q.into(), a: "a".into(), at, thread, error: false, image: false } }
 
     #[test]
     fn prune_drops_entries_older_than_the_window() {
@@ -213,7 +255,7 @@ mod tests {
     #[test]
     fn request_body_keeps_recent_context_and_system_prompt() {
         let ctx: Vec<(String, String)> = (0..6).map(|i| (format!("q{i}"), format!("a{i}"))).collect();
-        let body = request_body(&ctx, "now?");
+        let body = request_body(&ctx, "now?", None);
         let contents = body["contents"].as_array().unwrap();
         assert_eq!(contents.len(), CONTEXT_TURNS * 2 + 1);
         assert_eq!(contents[0]["parts"][0]["text"], "q2");
@@ -228,6 +270,22 @@ mod tests {
         let blocked = serde_json::json!({"promptFeedback":{"blockReason":"SAFETY"}});
         assert!(parse_answer(&blocked).unwrap_err().contains("safety"));
         assert!(parse_answer(&serde_json::json!({"candidates":[]})).is_err());
+    }
+
+    #[test]
+    fn images_are_downscaled_to_jpeg_and_sent_before_the_question() {
+        let big = crate::clipboard_image::Rgba { w: 3200, h: 1000, px: vec![0u8; 3200 * 1000 * 4] };
+        let img = prepare_image(&big).unwrap();
+        assert_eq!((img.w, img.h, img.mime), (1600, 500, "image/jpeg"));
+        assert_eq!(&img.data[..2], &[0xFF, 0xD8]);
+        let decoded = image::load_from_memory(&img.data).unwrap().to_rgb8();
+        assert!(decoded.get_pixel(10, 10)[0] > 240, "transparent pixels become white, not black");
+        let body = request_body(&[("q".into(), "a".into())], "what is it?", Some(&img));
+        let parts = body["contents"].as_array().unwrap().last().unwrap()["parts"].as_array().unwrap().clone();
+        assert_eq!(parts[0]["inline_data"]["mime_type"], "image/jpeg");
+        assert!(parts[0]["inline_data"]["data"].as_str().unwrap().len() > 100);
+        assert_eq!(parts[1]["text"], "what is it?");
+        assert!(prepare_image(&crate::clipboard_image::Rgba { w: 2, h: 2, px: vec![0; 3] }).is_none());
     }
 
     #[test]

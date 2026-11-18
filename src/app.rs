@@ -164,6 +164,12 @@ pub enum Cmd {
     OpenUrl(String),
     /// 需要键盘输入：外壳应让窗口可激活并取得焦点。
     Focus,
+    /// Ask: start a Windows screen snip and attach the result.
+    AskSnip,
+    /// Ask: choose a picture file to attach.
+    AskPickImage,
+    /// Ask: Ctrl+V pressed; attach a clipboard picture if there is one.
+    AskPasteImage,
     Reveal(PathBuf),
     Copy(String),
     Notify(String, String),
@@ -673,7 +679,7 @@ pub struct App {
     swipe: Option<(Pos2, f64)>,
     /// Opened from the global hotkey: stays open for the keyboard until Esc, the hotkey again, or focus loss.
     pub(crate) key_open: bool,
-    key_open_at: f64,
+    pub(crate) key_open_at: f64,
 
     // 拖入
     pub(crate) drag_hot: bool,
@@ -742,7 +748,7 @@ pub struct App {
     pub(crate) media: NowPlaying,
     pub(crate) music_artwork: Option<(std::sync::Arc<egui::ColorImage>,egui::TextureHandle)>,
 
-    forced_open_until:f64,
+    pub(crate) forced_open_until:f64,
     pub settings_open:bool,
     settings_window:std::sync::Arc<std::sync::Mutex<crate::settings_window::State>>,
     pub displays:Vec<crate::display_layout::Display>,
@@ -1563,7 +1569,7 @@ impl App {
         true
     }
 
-    fn close_keyboard_open(&mut self){
+    pub(crate) fn close_keyboard_open(&mut self){
         self.key_open=false;
         self.forced_open_until=0.0;
     }

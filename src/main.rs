@@ -47,7 +47,10 @@ struct Shell {
     #[cfg(windows)]
     incoming: Option<daozai::system::Notifications>,
     #[cfg(windows)]
-    hotkey: std::sync::mpsc::Receiver<()>,
+    hotkey: std::sync::mpsc::Receiver<i32>,
+    /// Waiting for a screen snip to land on the clipboard: (sequence before, started).
+    #[cfg(windows)]
+    ask_snip: Option<(u32,Instant)>,
     #[cfg(windows)]
     messengers:messenger::Runtime,
     #[cfg(windows)]
@@ -187,6 +190,7 @@ impl Shell {
             #[cfg(windows)] input_keys:daozai::input::Shortcuts::start(),
             #[cfg(windows)] incoming,
             #[cfg(windows)] hotkey:daozai::system::hotkey(cc.egui_ctx.clone()),
+            #[cfg(windows)] ask_snip:None,
             #[cfg(windows)] messengers:Default::default(),
             #[cfg(windows)] unread_at:PollClock::default(),
             #[cfg(windows)] opening_messenger:None,
@@ -448,11 +452,24 @@ impl eframe::App for Shell {
                     self.app.receive_messenger_reminder(unread);
                 }
             }}
-            while self.hotkey.try_recv().is_ok() {
-                // Take the foreground so arrow, number and Esc keys reach the island.
-                if self.app.toggle_keyboard_open() {
+            while let Ok(id)=self.hotkey.try_recv() {
+                // Take the foreground so typing, arrow, number and Esc keys reach the island.
+                let opened=if id==daozai::system::HOTKEY_ASK {self.app.toggle_ask()} else {self.app.toggle_keyboard_open()};
+                if opened {
                     if let Some(native)=&self.native {unsafe{let _=windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(native.hwnd());}}
                 }
+            }
+            // A finished screen snip lands on the clipboard: attach it to Ask.
+            if let Some((sequence,at))=self.ask_snip {
+                if daozai::clipboard::sequence()!=sequence {
+                    self.ask_snip=None;
+                    if let Some(image)=daozai::clipboard::read_image() {
+                        if self.app.ask_attach(&image) {
+                            if let Some(native)=&self.native {unsafe{let _=windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(native.hwnd());}}
+                        }
+                    }
+                } else if at.elapsed()>Duration::from_secs(120) {self.ask_snip=None;}
+                else {ctx.request_repaint_after(Duration::from_millis(250));}
             }
             if let Some(rx)=&self.incoming {
                 rx.taskbar_settings(&self.app.settings);
@@ -706,6 +723,29 @@ impl eframe::App for Shell {
                     }
                 },
                 Cmd::Focus => ctx.send_viewport_cmd(egui::ViewportCommand::Focus),
+                Cmd::AskSnip => {
+                    #[cfg(windows)] {
+                        self.app.ask_before_snip();
+                        self.ask_snip=Some((daozai::clipboard::sequence(),Instant::now()));
+                        // Give the island a moment to fold away so it isn't in the snip.
+                        std::thread::spawn(||{
+                            std::thread::sleep(Duration::from_millis(350));
+                            let _=std::process::Command::new("explorer.exe").arg("ms-screenclip:").spawn();
+                        });
+                        ctx.request_repaint_after(Duration::from_millis(250));
+                    }
+                },
+                Cmd::AskPickImage => {
+                    #[cfg(windows)] match daozai::system::pick_files_for("Choose a picture to ask about",false){
+                        Ok(files)=>if let Some(path)=files.into_iter().next(){
+                            if self.app.ask_attach_file(&path) {ctx.send_viewport_cmd(egui::ViewportCommand::Focus);}
+                        },
+                        Err(_)=>self.app.say("Couldn't choose a picture"),
+                    }
+                },
+                Cmd::AskPasteImage => {
+                    if let Some(image)=daozai::clipboard::read_image() {self.app.ask_attach(&image);}
+                },
             }
         }
 

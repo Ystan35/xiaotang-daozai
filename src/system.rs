@@ -843,25 +843,29 @@ mod avoidance_tests {
     }
 }
 
-/// Global hotkey Ctrl+Alt+D: opens the island for the keyboard from anywhere.
-/// Registered on its own thread, which owns the message queue that WM_HOTKEY is posted to.
-pub fn hotkey(ctx: eframe::egui::Context) -> Receiver<()> {
+/// Global hotkeys: Ctrl+Alt+D opens the island for the keyboard, Ctrl+Alt+Space opens Ask ready to type.
+/// Registered on their own thread, which owns the message queue that WM_HOTKEY is posted to.
+pub const HOTKEY_KEYBOARD: i32 = 1;
+pub const HOTKEY_ASK: i32 = 2;
+pub fn hotkey(ctx: eframe::egui::Context) -> Receiver<i32> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT};
     use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY};
     let (tx, rx) = mpsc::channel();
     let _ = std::thread::Builder::new().name("daozai-hotkey".into()).spawn(move || unsafe {
-        if RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x44).is_err() {
-            eprintln!("[hotkey] Ctrl+Alt+D is already taken by another app");
-            return;
+        let keys = [(HOTKEY_KEYBOARD, 0x44u32, "Ctrl+Alt+D"), (HOTKEY_ASK, 0x20u32, "Ctrl+Alt+Space")];
+        let mut any = false;
+        for (id, vk, name) in keys {
+            if RegisterHotKey(None, id, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, vk).is_ok() { any = true; } else { eprintln!("[hotkey] {name} is already taken by another app"); }
         }
+        if !any { return; }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
             if msg.message == WM_HOTKEY {
-                if tx.send(()).is_err() { break; }
+                if tx.send(msg.wParam.0 as i32).is_err() { break; }
                 ctx.request_repaint();
             }
         }
-        let _ = UnregisterHotKey(None, 1);
+        for (id, _, _) in keys { let _ = UnregisterHotKey(None, id); }
     });
     rx
 }

@@ -8608,7 +8608,7 @@ fn ask_without_a_key_points_to_settings_and_the_key_page(){
 fn ask_typing_sends_on_enter_and_number_keys_do_not_change_pages(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.ask.has_key=true;h.app.ask.history.entries.clear();open_on_ask(&mut h);
-    h.click(H::local(150.0,51.0));h.frame(vec![]);
+    h.click(H::local(150.0,crate::app::ASK_H-58.0));h.frame(vec![]);
     assert!(h.cmds.contains(&crate::app::Cmd::Focus),"点输入框要抢键盘焦点");
     assert!(h.app.is_editing());
     h.frame(vec![egui::Event::Text("Capital of France 1".into())]);
@@ -8654,8 +8654,8 @@ fn ask_errors_are_shown_but_not_saved_and_new_chat_starts_fresh(){
 fn ask_history_is_pruned_by_the_retention_setting(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let h=H::new();
     let now=crate::ask::now_secs();
-    let old=crate::ask::Entry{q:"old".into(),a:"a".into(),at:now-2*86_400,thread:1,error:false};
-    let new=crate::ask::Entry{q:"new".into(),a:"a".into(),at:now-60,thread:2,error:false};
+    let old=crate::ask::Entry{q:"old".into(),a:"a".into(),at:now-2*86_400,thread:1,error:false,image:false};
+    let new=crate::ask::Entry{q:"new".into(),a:"a".into(),at:now-60,thread:2,error:false,image:false};
     std::fs::create_dir_all(crate::model::config_dir()).unwrap();
     std::fs::write(crate::ask::History::path(),serde_json::to_vec(&vec![old,new]).unwrap()).unwrap();
     let loaded=crate::ask::History::load(1);
@@ -8674,7 +8674,7 @@ fn ask_history_is_pruned_by_the_retention_setting(){
 fn ask_page_preview(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let dest=std::path::PathBuf::from(std::env::var_os("DAOZAI_ASK_PREVIEW_DIR").expect("preview dir"));std::fs::create_dir_all(&dest).unwrap();
-    for name in ["ask-nokey","ask-empty","ask-thread","ask-history"] {
+    for name in ["ask-nokey","ask-empty","ask-thread","ask-history","ask-attach"] {
         let mut h=H::new();h.app.settings.pet=false;h.app.ask.history.entries.clear();
         h.app.ask.has_key=name!="ask-nokey";
         if name=="ask-thread"||name=="ask-history" {
@@ -8682,6 +8682,11 @@ fn ask_page_preview(){
             h.app.ask_finish("And its population?".into(),Ok("About 470,000 people live in the Canberra area.\n• Smallest of Australia's state and territory capitals\n• Home to Parliament House".into()));
         }
         if name=="ask-history" {h.app.ask_new_chat();h.app.ask_finish("Convert 5 miles to km".into(),Ok("5 miles is about 8.05 km.".into()));h.app.ask.show_history=true;}
+        if name=="ask-attach" {
+            let mut px=Vec::with_capacity(800*500*4);
+            for y in 0..500u32 {for x in 0..800u32 {px.extend_from_slice(&[(x/4) as u8,(y/3) as u8,180,255]);}}
+            h.app.ask_attach(&crate::clipboard_image::Rgba{w:800,h:500,px});h.app.ask.buf="What chart is this?".into();
+        }
         h.app.show_page(crate::app::ASK_PAGE);
         let (w,hgt)=(crate::app::CANVAS_W,WIN_H);
         let mut raster=feature_raster_sized(w,hgt);
@@ -8705,4 +8710,57 @@ fn ask_page_preview(){
             raster.free_textures(&output.textures_delta);
         }
     }
+}
+
+#[test]
+fn ask_hotkey_opens_ask_ready_to_type_and_esc_closes_it(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
+    h.app.ask.has_key=true;h.app.set_page_visible(crate::app::ASK_PAGE,false);
+    for _ in 0..30 {h.frame(vec![]);}
+    assert!(!h.app.open);
+    assert!(h.app.toggle_ask());
+    for _ in 0..40 {h.frame(vec![]);}
+    assert!(h.app.open,"不用悬停也要展开");assert_eq!(h.app.page,crate::app::ASK_PAGE);
+    assert!(h.app.module_on(crate::app::ASK_PAGE),"热键会重新打开被隐藏的提问页");
+    assert!(h.cmds.contains(&crate::app::Cmd::Focus));assert!(h.app.ask.focused,"打开后直接可以打字");
+    h.frame(vec![egui::Event::Text("hello".into())]);
+    assert_eq!(h.app.ask.buf,"hello");
+    key(&mut h,egui::Key::Escape);
+    for _ in 0..60 {h.frame(vec![]);}
+    assert!(!h.app.key_open && !h.app.open,"Esc 收起");
+    assert!(h.app.toggle_ask());for _ in 0..10 {h.frame(vec![]);}
+    assert!(!h.app.toggle_ask(),"再按一次热键收起");
+}
+
+#[test]
+fn ask_pictures_attach_show_a_thumbnail_and_go_with_the_next_question(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
+    h.app.ask.has_key=true;h.app.ask.history.entries.clear();
+    let img=crate::clipboard_image::Rgba{w:640,h:400,px:vec![200;640*400*4]};
+    assert!(h.app.ask_attach(&img));
+    for _ in 0..40 {h.frame(vec![]);}
+    assert_eq!(h.app.page,crate::app::ASK_PAGE);assert!(h.app.ask.focused);
+    assert!(h.app.ask.attachment.as_ref().unwrap().texture.is_some(),"附图要显示缩略图");
+    // Ctrl+V with no text pasted asks the shell to look for a clipboard picture.
+    h.cmds.clear();
+    h.frame(vec![egui::Event::Key{key:egui::Key::V,physical_key:None,pressed:true,repeat:false,modifiers:egui::Modifiers::COMMAND}]);
+    assert!(h.cmds.contains(&crate::app::Cmd::AskPasteImage));
+    h.cmds.clear();
+    h.click(ask_hit(&h,"ask-snip"));assert!(h.cmds.contains(&crate::app::Cmd::AskSnip));
+    h.hover(H::local(300.0,30.0),0.3);h.cmds.clear();
+    h.click(ask_hit(&h,"ask-image"));assert!(h.cmds.contains(&crate::app::Cmd::AskPickImage));
+    // An empty question with a picture still sends, with a default question.
+    h.hover(H::local(300.0,30.0),0.3);
+    h.click(ask_hit(&h,"ask-send"));
+    let (_,q)=h.app.ask.pending.take().expect("sent");
+    assert_eq!(q,crate::ask::IMAGE_ONLY_QUESTION);
+    assert!(h.app.ask.attachment.is_none(),"图片随提问发出后清空");
+    h.app.ask_finish(q,Ok("A grey square.".into()));
+    assert!(h.app.ask.thread_entries()[0].image);
+    // Clicking the thumbnail removes a picture.
+    h.app.ask_attach(&img);for _ in 0..5 {h.frame(vec![]);}
+    h.click(ask_hit(&h,"ask-thumb"));
+    assert!(h.app.ask.attachment.is_none());
+    h.app.ask_before_snip();for _ in 0..60 {h.frame(vec![]);}
+    assert!(!h.app.ask.focused && !h.app.open,"截图前岛要收起，免得拍进去");
 }
