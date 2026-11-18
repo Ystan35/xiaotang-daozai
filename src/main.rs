@@ -640,6 +640,11 @@ impl eframe::App for Shell {
                     #[cfg(windows)] if let Err(e)=daozai::system::drag_file(&p){self.app.say(format!("无法拖出文件：{}",e.code()));}
                     ctx.input_mut(|i| i.pointer=Default::default());
                 },
+                Cmd::DragText(text)=>{
+                    #[cfg(windows)] if let Err(e)=daozai::system::drag_text(&text){self.app.say(format!("无法拖出文字：{}",e.code()));}
+                    #[cfg(not(windows))] let _=text;
+                    ctx.input_mut(|i| i.pointer=Default::default());
+                },
                 Cmd::DisconnectNotifications=>{#[cfg(windows)]{self.incoming=None;self.app.settings.read_notifications=false;self.app.settings.save();self.app.listener_status="已断开，不再读取 Windows 通知".into();}},
                 Cmd::Reveal(p)=>{let _=daozai::child_process::spawn(std::process::Command::new("explorer.exe").arg(format!("/select,{}",p.display())));},
                 Cmd::QuotaChooseFile=>{

@@ -564,6 +564,35 @@ pub fn drag_file(path: &std::path::Path) -> Result<()> {
         result
     }
 }
+/// 把一段文字拖到其他程序：放下处收到的就是这段文字（相当于粘贴）。
+pub fn drag_text(text: &str) -> Result<()> {
+    unsafe {
+        use windows::Win32::Foundation::{GlobalFree, HGLOBAL};
+        use windows::Win32::System::Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL};
+        use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+        use windows::Win32::System::Ole::{OleInitialize, OleUninitialize, CF_UNICODETEXT, DROPEFFECT_COPY};
+        use windows::Win32::UI::Shell::{SHCreateDataObject, SHDoDragDrop};
+        let initialized = OleInitialize(None).is_ok();
+        let result = (|| {
+            let data: IDataObject = SHCreateDataObject(None, None, None)?;
+            let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+            let memory = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2)?;
+            let ptr = GlobalLock(memory) as *mut u16;
+            if ptr.is_null() { let _ = GlobalFree(memory); return Err(windows::core::Error::from_win32()); }
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+            let _ = GlobalUnlock(memory);
+            let format = FORMATETC { cfFormat: CF_UNICODETEXT.0, ptd: std::ptr::null_mut(), dwAspect: DVASPECT_CONTENT.0, lindex: -1, tymed: TYMED_HGLOBAL.0 as u32 };
+            let medium = STGMEDIUM { tymed: TYMED_HGLOBAL.0 as u32, u: STGMEDIUM_0 { hGlobal: HGLOBAL(memory.0) }, pUnkForRelease: std::mem::ManuallyDrop::new(None) };
+            // 交给数据对象后由它负责释放内存。
+            if let Err(e) = data.SetData(&format, &medium, true) { let _ = GlobalFree(memory); return Err(e); }
+            SHDoDragDrop(None, &data, None, DROPEFFECT_COPY).map(|_| ())
+        })();
+        if initialized {
+            OleUninitialize();
+        }
+        result
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

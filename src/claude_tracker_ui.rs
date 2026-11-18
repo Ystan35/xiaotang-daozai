@@ -2,7 +2,7 @@
 use crate::{app::App,claude_tracker::{self,Status},extras::{setting_row,settings_card},paint::{Card,H},theme::{self,W}};
 use eframe::egui::{self,Color32};
 
-const ROWS:usize=4;
+pub(crate) const ROWS:usize=4;
 const ORANGE:Color32=Color32::from_rgb(255,166,77);
 
 /// 恢复时间：今天只显示时刻，其余带「明天」或日期。
@@ -18,12 +18,13 @@ impl App {
         self.claude_tracker.enabled && (self.claude_tracker.view || self.quota.config.accounts.is_empty())
     }
 
-    /// AI 额度页右上角的「Claude 账号」切换；返回是否显示轮换视图。
+    /// AI 额度页右下角的「Claude 账号」切换（顶栏中间是日期时间，放不下）；返回是否显示轮换视图。
     pub(crate) fn claude_tracker_chip(&mut self,c:&Card)->bool{
         if !self.claude_tracker.enabled{return false;}
         let on=self.claude_tracker_view();
-        let (r,b)=crate::paint::capsule(c,218.0,8.0,76.0,21.0,"claude-tracker-chip",if on{Color32::from_rgb(70,48,38)}else{theme::BTN},theme::BTN_HOVER);
-        b.text(256.0,23.0,"Claude 账号",10.0,W::Semibold,if on{Color32::from_rgb(240,170,130)}else{theme::GRAY},H::Center);
+        let (x,y,w,h)=(CHIP_X,147.0,357.0-CHIP_X,18.0);
+        let (r,b)=crate::paint::capsule(c,x,y,w,h,"claude-tracker-chip",if on{Color32::from_rgb(70,48,38)}else{theme::BTN},theme::BTN_HOVER);
+        b.text(x+w/2.0,y+12.5,if on{"返回额度"}else{"Claude 账号"},9.5,W::Semibold,if on{Color32::from_rgb(240,170,130)}else{theme::GRAY},H::Center);
         if r.on_hover_text(if on{"返回 AI 额度"}else{"Claude 账号轮换"}).clicked(){
             self.claude_tracker.view=!on;self.claude_tracker.editing=None;
         }
@@ -41,7 +42,8 @@ impl App {
             return;
         }
         let count=self.claude_tracker.accounts.len();
-        let first=self.claude_tracker.first.min(count.saturating_sub(1))/ROWS*ROWS;
+        // 滚轮逐行滚动，‹ › 一次翻一屏。
+        let first=self.claude_tracker.first.min(count.saturating_sub(ROWS));self.claude_tracker.first=first;
         let mut action:Option<(String,&'static str,i64)>=None;
         for (row,a) in self.claude_tracker.accounts.iter().enumerate().skip(first).take(ROWS){
             let y=36.0+(row-first) as f32*29.0;let cy=y+12.0;
@@ -73,11 +75,11 @@ impl App {
             }
         }
         if count>ROWS{
-            let pages=count.div_ceil(ROWS);let page=first/ROWS;
-            c.text(200.0,161.0,&format!("{}/{}",page+1,pages),10.0,W::Regular,theme::DIM,H::Center);
-            for (x,label,step) in [(170.0,"‹",-1isize),(222.0,"›",1)]{
+            let last=count-ROWS;
+            c.text(200.0,161.0,&format!("{}–{} / {count} · 滚轮查看",first+1,first+ROWS),10.0,W::Regular,theme::DIM,H::Center);
+            for (x,label,step) in [(132.0,"‹",-1isize),(268.0,"›",1)]{
                 if c.hit(x-8.0,150.0,18.0,16.0,("claude-page",step)).clicked(){
-                    self.claude_tracker.first=((page as isize+step).rem_euclid(pages as isize) as usize)*ROWS;
+                    self.claude_tracker.first=if step<0{if first==0{last}else{first.saturating_sub(ROWS)}}else if first>=last{0}else{(first+ROWS).min(last)};
                 }
                 c.text(x+1.0,162.0,label,13.0,W::Regular,theme::GRAY,H::Center);
             }
@@ -152,6 +154,9 @@ impl App {
         self.alert("Claude 账号可用",format!("{} 可以继续使用了",names.join("、")),crate::app::QUOTA_PAGE,true);
     }
 }
+
+/// 右下角切换按钮的左边界；额度页底部的更新时间不能越过它。
+pub(crate) const CHIP_X:f32=287.0;
 
 fn key_action(key:&str)->&'static str{if key=="limit"{"limit"}else{"edit"}}
 

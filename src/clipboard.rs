@@ -91,6 +91,12 @@ impl History {
         self.changed();
     }
 
+    /// 只清空未固定的文字或图片。
+    pub fn clear_recent_kind(&mut self, images: bool) {
+        self.items.retain(|c| c.pinned || c.image.is_some() != images);
+        self.changed();
+    }
+
     pub fn toggle_pin(&mut self, index: usize) -> bool {
         let pinned_count = self.items.iter().filter(|c| c.pinned).count();
         let Some(item) = self.items.get_mut(index) else { return false; };

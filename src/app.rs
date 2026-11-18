@@ -169,6 +169,8 @@ pub enum Cmd {
     ToggleAutostart,
     AddFiles,
     DragFile(PathBuf),
+    /// 把文字拖到其他程序里，放下即粘贴。
+    DragText(String),
     QuotaRefresh,
     QuotaConnected,
     QuotaChooseFile,
@@ -678,6 +680,8 @@ pub struct App {
     pub(crate) shelf_tab: usize,
     pub clipboard: crate::clipboard::Shared,
     pub(crate) clip_first: usize,
+    /// 图片分栏第一张的位置。
+    pub(crate) clip_img_first: usize,
     pub(crate) clip_confirm_clear: Option<f64>,
     /// 剪贴板图片缩略图，按文件名缓存；None 表示读取失败。
     pub(crate) clip_thumbs: std::collections::HashMap<String, Option<egui::TextureHandle>>,
@@ -866,6 +870,7 @@ impl App {
             shelf_tab: 0,
             clipboard: crate::clipboard::Shared::new(clipboard_on),
             clip_first: 0,
+            clip_img_first: 0,
             clip_confirm_clear: None,
             clip_thumbs: Default::default(),
             clip_ocr: None,
@@ -1845,14 +1850,19 @@ impl App {
                         self.wheel_delta=0.0;
                         let calendar_max=if self.page==CALENDAR_PAGE {self.calendar_scroll_max(env)}else{0};
                         let calendar_body=self.page==CALENDAR_PAGE && Rect::from_min_max(Pos2::new(163.0,52.0),Pos2::new(378.0,208.0)).contains(cursor);
-                        let clipboard_tab=self.page==3 && self.shelf_tab==1;
+                        let clipboard_tab=self.page==3 && self.shelf_tab>=1;
                         let clipboard_body=clipboard_tab && Rect::from_min_max(Pos2::new(42.0,31.0),Pos2::new(377.0,124.0)).contains(cursor);
+                        let tracker_body=self.page==QUOTA_PAGE && self.claude_tracker_view() && Rect::from_min_max(Pos2::new(42.0,31.0),Pos2::new(377.0,170.0)).contains(cursor);
                         let list=match self.page {
+                            QUOTA_PAGE if tracker_body
+                                =>Some((&mut self.claude_tracker.first,self.claude_tracker.accounts.len().saturating_sub(crate::claude_tracker_ui::ROWS))),
                             CALENDAR_PAGE if calendar_body=>Some((&mut self.calendar.view.first,calendar_max)),
                             4 if Rect::from_min_max(Pos2::new(196.0,31.0),Pos2::new(377.0,124.0)).contains(cursor)
                                 =>Some((&mut self.todo_first,self.todos.items.len().saturating_sub(3))),
+                            3 if clipboard_body && self.shelf_tab==2
+                                =>{let n=self.clipboard.lock().items.iter().filter(|c|c.image.is_some()).count();Some((&mut self.clip_img_first,n.saturating_sub(crate::pages::IMG_TILES)))}
                             3 if clipboard_body
-                                =>Some((&mut self.clip_first,self.clipboard.lock().items.len().saturating_sub(crate::pages::CLIP_ROWS))),
+                                =>{let n=self.clipboard.lock().items.iter().filter(|c|c.image.is_none()).count();Some((&mut self.clip_first,n.saturating_sub(crate::pages::CLIP_ROWS)))}
                             3 if !clipboard_tab && Rect::from_min_max(Pos2::new(36.0,28.0),Pos2::new(383.0,128.0)).contains(cursor)
                                 =>Some((&mut self.shelf_first,self.shelf.items.len().saturating_sub(5))),
                             _=>None,

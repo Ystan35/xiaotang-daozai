@@ -429,7 +429,7 @@ impl App {
                     else if a.provider==Provider::Claude{format!("本地记录 · {time}")}
                     else if let Some(wallet)=&s.wallet{let b=wallet.primary();if wallet.balances.len()>1{let other=wallet.balances.iter().find(|other|other.currency!=b.currency).unwrap();format!("另有 {} {} · {time}",other.currency,other.full(other.total))}else{format!("{} · {time} 更新",b.currency)}}
                     else{format!("{time} 更新")};
-                let x=if a.provider.balance(){125.0}else{157.0};let width=357.0-x;let y=154.0;
+                let x=if a.provider.balance(){125.0}else{157.0};let width=if self.claude_tracker.enabled{crate::claude_tracker_ui::CHIP_X-6.0}else{357.0}-x;let y=154.0;
                 c.centered_text(x,y,&c.fit(&status,10.0,W::Regular,width),10.0,W::Regular,if stale.is_some()&&!busy{Color32::from_rgb(255,166,77)}else{theme::DIM},H::Left);
                 c.hit(x,y-6.0,width,8.0,("quota-update-time",&a.id)).on_hover_text(if let Some(reason)=stale{format!("{status}\n{reason}")}else{status});
             }

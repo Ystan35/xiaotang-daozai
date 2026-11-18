@@ -8416,7 +8416,7 @@ fn claude_tracker_marks_adjusts_and_alerts_on_the_quota_page(){
     let now=chrono::Utc::now().timestamp();
     let main=h.app.claude_tracker.add("主号",now).unwrap();h.app.claude_tracker.add("学校号",now).unwrap();
     for _ in 0..5{h.frame(vec![]);}
-    assert!(text(&h,"Claude 账号")&&text(&h,"主号")&&text(&h,"学校号"),"没有 AI 账号时直接显示轮换列表");
+    assert!(text(&h,"返回额度")&&text(&h,"主号")&&text(&h,"学校号"),"没有 AI 账号时直接显示轮换列表，右下角是切换按钮");
     press(&mut h,"用完");
     let reset=h.app.claude_tracker.find(&main).unwrap().reset_at.expect("标记为用完");
     assert_eq!(h.app.claude_tracker.editing.as_deref(),Some(main.as_str()));
@@ -8431,6 +8431,14 @@ fn claude_tracker_marks_adjusts_and_alerts_on_the_quota_page(){
     h.frame(vec![]);
     assert!(h.app.claude_tracker.find(&main).unwrap().reset_at.is_none());
     assert!(h.app.history.iter().any(|a|a.title=="Claude 账号可用"&&a.body.contains("主号")));
+    // 账号多于一屏时滚轮逐行滚动，停在两端，不翻到别的页面。
+    for name in ["三号","四号","五号"]{h.app.claude_tracker.add(name,now).unwrap();}
+    h.hover(H::local(200.0,80.0),0.3);
+    assert!(text(&h,"1–4 / 5 · 滚轮查看"));
+    for (delta,first) in [(-40.0,1),(-40.0,1),(40.0,0),(40.0,0)]{
+        h.hover(H::local(200.0,80.0),0.3);h.wheel(delta);
+        assert_eq!((h.app.page,h.app.claude_tracker.first),(crate::app::QUOTA_PAGE,first));
+    }
     // 设置页：开关与账号列表可渲染，关闭后入口消失。
     h.t+=0.1;let out=h.ctx.run(egui::RawInput{time:Some(h.t),screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(780.0,850.0))),..Default::default()},|ctx|{egui::CentralPanel::default().show(ctx,|ui|h.app.quota_settings(ui));});
     let settings_text=|label:&str|out.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().contains(label)));
@@ -8440,25 +8448,30 @@ fn claude_tracker_marks_adjusts_and_alerts_on_the_quota_page(){
 }
 
 #[test]
-fn clipboard_images_are_opt_in_and_rows_offer_text_recognition() {
+fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let mut h=H::new();
     assert!(!h.app.settings.clipboard_images,"记录图片默认关闭");
+    let has=|h:&H,label:&str|h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()==label));
     let img=crate::clipboard_image::Rgba{w:4,h:2,px:vec![90;4*2*4]};
     h.app.clipboard.lock().items.clear();
-    h.frame(vec![]);
+    h.app.show_page(3);h.app.shelf_tab=1;
+    h.hover(H::local(300.0,60.0),0.8);
     assert!(!h.app.clipboard.record_image(&img),"未开启时不记录图片");
+    assert!(!has(&h,"图片"),"未开启也没有图片记录时不显示「图片」分栏");
+
     h.app.settings.clipboard_images=true;
     h.frame(vec![]);
     assert!(h.app.clipboard.record_image(&img));
-    let file=h.app.clipboard.lock().items[0].image.clone().unwrap().file;
-    let dir=crate::model::config_dir().join(crate::clipboard_image::DIR);
-    assert!(dir.join(&file).exists());
+    h.app.clipboard.lock().push("一段文字","09:00");
+    let file=h.app.clipboard.lock().items[1].image.clone().unwrap().file;
+    assert!(crate::model::config_dir().join(crate::clipboard_image::DIR).join(&file).exists());
+    h.hover(H::local(300.0,60.0),0.3);
+    assert!(has(&h,"一段文字") && !has(&h,"识字"),"「剪贴板」分栏只列文字");
 
-    h.app.show_page(3);h.app.shelf_tab=1;
-    h.hover(H::local(300.0,60.0),0.8);
-    let has=|h:&H,label:&str|h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()==label));
-    assert!(has(&h,"图片 4×2"));
+    h.click_text("图片");h.hover(H::local(300.0,60.0),0.3);
+    assert_eq!(h.app.shelf_tab,2);
+    assert!(has(&h,"识字") && !has(&h,"一段文字"),"「图片」分栏只列图片");
     h.click_text("识字");
     assert!(h.app.clip_ocr.is_some(),"点「识字」开始后台识别");
     // 识别在后台线程进行；Linux 上直接返回不支持。
@@ -8469,9 +8482,12 @@ fn clipboard_images_are_opt_in_and_rows_offer_text_recognition() {
     assert!(has(&h,"文字识别仅支持 Windows"),"识别失败时提示原因");
 
     h.app.clipboard.lock().set_image_text(&file,"识别 结果");
-    h.frame(vec![]);
-    assert!(has(&h,"识别 结果") && has(&h,"文字"),"识别过的图片显示文字，按钮改为复制文字");
-    h.app.clipboard.lock().clear_recent();
-    h.frame(vec![]);
-    assert!(h.app.clip_thumbs.is_empty(),"记录清空后缩略图缓存也释放");
+    h.hover(H::local(300.0,60.0),0.3);
+    assert!(has(&h,"文字"),"识别过的图片按钮改为复制文字");
+
+    // 图片分栏的「清空」只清图片。
+    h.click_text("清空");h.hover(H::local(300.0,60.0),0.1);h.click_text("确认");h.hover(H::local(300.0,60.0),0.3);
+    let items=h.app.clipboard.lock().items.clone();
+    assert_eq!(items.len(),1);assert!(items[0].image.is_none());
+    assert!(h.app.clip_thumbs.is_empty(),"图片清空后缩略图缓存也释放");
 }
