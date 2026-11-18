@@ -92,10 +92,10 @@ fn weather_content_tap_keeps_other_controls_independent(){
 fn weather_week_shows_all_seven_days(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.weather.snapshot=Some(crate::weather::Snapshot{place:"杭州".into(),temp:19.0,
-        days:["今天","明天","周五","周六","周日","周一","周二"].into_iter().map(|label|crate::weather::Day{label:label.into(),high:23.0,low:15.0,..Default::default()}).collect(),
+        days:["今天","明天","Fri","Sat","Sun","Mon","Tue"].into_iter().map(|label|crate::weather::Day{label:label.into(),high:23.0,low:15.0,..Default::default()}).collect(),
         at:chrono::Utc::now().timestamp(),..Default::default()});
     h.app.show_page(8);h.hover(H::local(250.0,65.0),1.0);
-    for label in ["今天","明天","周五","周六","周日","周一","周二"] {
+    for label in ["今天","明天","Fri","Sat","Sun","Mon","Tue"] {
         assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()==label)),"七天预报缺少 {label}");
     }
 }
@@ -118,7 +118,7 @@ fn weather_today_opens_solar_details_and_returns_to_forecast(){
     h.app.weather.snapshot=Some(crate::weather::Snapshot{place:"杭州".into(),temp:19.0,sunrise:Some("06:52".into()),sunset:Some("17:21".into()),sun_times:None,..Default::default()});
     h.app.show_page(8);h.hover(H::local(250.0,65.0),1.0);h.click(H::local(100.0,75.0));h.hover(H::local(100.0,75.0),0.3);
     assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().contains("返回天气"))),"点击当天区域后应进入日出日落视图");
-    for phrase in ["日出","日落","06:52","17:21","日照进度待更新"] {
+    for phrase in ["Sun","times","06:52","17:21","日照进度待更新"] {
         assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().contains(phrase))),"旧缓存日照视图缺少 {phrase}");
     }
     assert!(!h.app.weather.loading,"浏览日照视图不应额外发起网络请求");
@@ -360,7 +360,7 @@ fn weather_cities_switch_from_the_island_title_and_keep_their_own_cache(){
     // 打开天气页，点标题展开下拉框，选「杭州」。
     h.app.weather.snapshot=Some(crate::weather::Snapshot{place:"北京".into(),position:Some(bj.clone()),temp:-3.0,code:71,day:true,at:chrono::Utc::now().timestamp(),..Default::default()});
     h.app.show_page(8);h.hover(H::local(250.0,65.0),1.0);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="当地")),"标题保持「当地天气」");
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="Local")),"标题保持「当地天气」");
     h.click(H::local(115.0,112.0));h.hover(H::local(330.0,200.0),0.4);
     assert!(h.app.weather.picker_open,"点地点行展开城市下拉");assert!(!h.app.weather.solar_open,"点地点行不应切到日照");
     for phrase in ["自动定位","杭州","北京","添加或管理城市"] {
@@ -628,11 +628,11 @@ fn editing_local_calendar_clears_outdated_reminders() {
         draft.title="原日程".into();
         let entry=draft.entry().unwrap();
         h.app.calendar.local=vec![entry.clone()];
-        h.app.alert("专注计时","休息",1,false);
+        h.app.alert("Focus timer","Break",1,false);
         h.frame(vec![]);
-        h.app.meeting_alert(entry.event.clone(),"本机日程".into(),7);
+        h.app.meeting_alert(entry.event.clone(),"Local calendar".into(),7);
         let mut other=entry.event.clone();other.uid="另一日程".into();
-        h.app.meeting_alert(other,"本机日程".into(),7);
+        h.app.meeting_alert(other,"Local calendar".into(),7);
         h.app.open_calendar_editor(Some(&entry.event.uid));
         let draft=h.app.calendar.draft.as_mut().unwrap();
         if reschedule {
@@ -778,7 +778,7 @@ fn local_calendar_can_create_edit_reload_and_remind_without_accounts() {
     assert_eq!(crate::local_calendar::load().unwrap()[0].event.title,"自己的安排");
     let entries=h.app.calendar_entries(start.date_naive());assert_eq!(entries.len(),1);assert!(matches!(entries[0].sources.as_slice(),[crate::calendar_ui::Source::Local]));
     h.frame(vec![]);
-    assert!(h.app.history.iter().any(|alert|alert.meeting.as_ref().is_some_and(|(event,source)|event.uid==uid && source=="本机日程")));
+    assert!(h.app.history.iter().any(|alert|alert.meeting.as_ref().is_some_and(|(event,source)|event.uid==uid && source=="Local calendar")));
     h.app.open_calendar_editor(Some(&uid));h.app.calendar.draft.as_mut().unwrap().title="改后的安排".into();h.app.save_calendar_editor();
     let saved=crate::local_calendar::load().unwrap();assert_eq!(saved.len(),1);assert_eq!(saved[0].event.uid,uid);assert_eq!(saved[0].event.title,"改后的安排");
     h.app.open_calendar_editor(Some(&uid));h.hover(H::local(300.0,40.0),1.0);
@@ -926,10 +926,10 @@ fn quality_distinct_reminders_are_queued_instead_of_overwritten() {
     h.app.meeting_alert(crate::mail::Meeting{ all_day:false,title:"会议二".into(),uid:"two".into(),..meeting.clone()},"飞书".into(),7);
     assert_eq!(h.app.alerts.len(),2,"同时到期的两场会议都需要提醒");
     h.app.meeting_alert(meeting,"飞书".into(),7);assert_eq!(h.app.alerts.len(),2,"同一会议重复更新应合并");
-    h.app.alert("待办到时间了","任务一",4,true);h.app.alert("待办到时间了","任务二",4,true);
-    assert_eq!(h.app.alerts.iter().filter(|a|a.title=="待办到时间了").count(),2);
-    h.app.alert("系统音量","10%",0,false);h.app.alert("系统音量","20%",0,false);
-    assert_eq!(h.app.alerts.iter().filter(|a|a.title=="系统音量").count(),1);
+    h.app.alert("To-do is due","任务一",4,true);h.app.alert("To-do is due","任务二",4,true);
+    assert_eq!(h.app.alerts.iter().filter(|a|a.title=="To-do is due").count(),2);
+    h.app.alert("System volume","10%",0,false);h.app.alert("System volume","20%",0,false);
+    assert_eq!(h.app.alerts.iter().filter(|a|a.title=="System volume").count(),1);
 }
 
 #[test]
@@ -1507,7 +1507,7 @@ fn minimal_mode_keeps_focus_running_and_returns_after_notifications(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.settings.minimal=true;h.app.pomo.running=true;h.app.pomo.remaining=120.0;
     for _ in 0..90 {h.frame(vec![]);}assert!(h.region.height()<20.0,"专注不能覆盖极简开关");
-    h.app.alert("系统音量","音量 50%",5,false);
+    h.app.alert("System volume","音量 50%",5,false);
     for _ in 0..60 {h.frame(vec![]);}assert!(h.region.height()>30.0,"临时提醒仍应可见");
     for _ in 0..240 {h.frame(vec![]);}assert!(h.region.height()<20.0,"提醒结束后应回到细线");
     assert!(h.app.pomo.running&&h.app.pomo.remaining<115.0,"极简仅改变显示，计时继续运行");
@@ -2023,7 +2023,7 @@ fn island_lyrics_keep_title_fallback_and_intro_and_gaps(){
             assert!(h.app.compact_notices(),"歌名兜底仍属于岛上歌词模式");
             assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Track"&&t.opacity_factor>0.95)),"状态 {state} 应显示当前歌名");
         } else {
-            let label=if state==0{"前奏"}else{"间奏"};
+            let label=if state==0{"Intro"}else{"Interlude"};
             assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()==label)),"同步歌词的前奏和间奏仍应显示状态");
         }
     }
@@ -3120,7 +3120,7 @@ fn mail_page_shows_code_and_copies_on_click() {
         new: true,
     });
     assert!(h.app.notification_bell_until > 0.0, "新邮件应点亮铃铛");
-    assert!(h.app.alerts.iter().any(|a|a.title=="新邮件"&&a.page==5),"新邮件应进入通知队列，不能只有收起时才可见的铃铛");
+    assert!(h.app.alerts.iter().any(|a|a.title=="New mail"&&a.page==5),"新邮件应进入通知队列，不能只有收起时才可见的铃铛");
     h.app.show_page(5);
     h.hover(Pos2::new(WIN_W / 2.0, 12.0), 0.6);
     h.hover(H::local(300.0, 60.0), 0.4);
@@ -3345,9 +3345,9 @@ fn shelf_duplicate_drop_reports_existing_files_and_preserves_the_current_page() 
     let files:Vec<_>=(0..7).map(|i|{let path=dir.join(format!("文件-{i}.txt"));std::fs::write(&path,"内容").unwrap();path}).collect();
     h.app.on_drop(files.clone());h.hover(Pos2::new(WIN_W/2.0,12.0),1.0);h.app.shelf_first=0;
     h.app.on_drop(vec![files[0].clone()]);h.hover(H::local(300.0,60.0),0.3);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="该文件已在置物架中")));
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="That file is already on the shelf")));
     h.app.on_drop(vec![files[0].clone(),files[1].clone()]);h.hover(H::local(300.0,60.0),0.3);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="这些文件已在置物架中")));
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Those files are already on the shelf")));
     assert_eq!(h.app.shelf_first,0,"重复添加不应将列表跳到最后");
     assert_eq!(h.app.shelf.items,files);assert_eq!(crate::model::Shelf::load().items,files);
 }
@@ -3363,7 +3363,7 @@ fn shelf_drop_distinguishes_new_duplicate_and_missing_files() {
     assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="已添加 1 个文件，2 个已存在，1 个无法添加")));
     assert_eq!(h.app.shelf.items,vec![old.clone(),new]);
     std::fs::remove_file(&old).unwrap();h.app.on_drop(vec![old]);h.hover(H::local(300.0,60.0),0.3);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="文件不存在或无法访问")));
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="File missing or not accessible")));
 }
 #[test]
 fn reminders_are_visible_while_collapsed_and_can_be_disabled(){
@@ -3452,7 +3452,7 @@ fn music_mascot_puts_away_the_microphone_during_notices_and_their_fade_out(){
     let microphone=|h:&H|h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Circle(c)if(c.radius-2.6).abs()<0.01));
     for _ in 0..90{h.frame(vec![]);}
     assert_eq!(h.app.pet_state(),PetState::Music);assert!(microphone(&h));
-    for (title,body) in [("大写锁定","已开启"),("大写锁定","已关闭"),("键盘输入语言","中文"),("系统音量","音量 60%"),("网络连接","Wi-Fi · 已连接"),("电源已连接","当前电量 80%"),("蓝牙设备","耳机")]{
+    for (title,body) in [("大写锁定","已开启"),("大写锁定","已关闭"),("Keyboard input language","中文"),("System volume","音量 60%"),("网络连接","Wi-Fi · 已连接"),("Power connected","当前电量 80%"),("Bluetooth device","耳机")]{
         h.app.alert(title,body,5,false);
         for _ in 0..60{h.frame(vec![]);assert_eq!(h.app.pet_state(),PetState::Awake,"{title} 出现时应使用普通表情");assert!(!microphone(&h),"{title} 期间不能带着演唱道具");}
         h.t+=2.0;h.frame(vec![]);
@@ -3476,7 +3476,7 @@ fn music_mascot_plays_new_expressions_and_resumes_after_interruptions(){
     assert_eq!(h.app.pet_state(),PetState::Music);
     let atlas=h.ctx.tex_manager().read().allocated().find_map(|(id,meta)|(meta.name=="daozai-expressions").then_some(*id)).unwrap();
     assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Mesh(mesh)if mesh.texture_id==atlas)));
-    h.app.alert("系统音量","音量 60%",5,false);h.frame(vec![]);
+    h.app.alert("System volume","音量 60%",5,false);h.frame(vec![]);
     assert_eq!(h.app.pet_state(),PetState::Awake);assert!(h.app.pet.expressions.current().is_none());
     for _ in 0..300 {h.frame(vec![]);if h.app.pet_state()==PetState::Music {break;}}
     assert_eq!(h.app.pet.expressions.current(),Some(expression),"通知结束后继续原来的听歌表情");
@@ -3558,7 +3558,7 @@ fn mascot_system_idle_wakes_once_then_follows_pointer(){
 fn mascot_feedback_plays_beside_notice_and_respects_switches(){
     use crate::extras::PetState;
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
-    h.app.drink_water();h.app.alert("待办到时间了","测试提醒",4,false);
+    h.app.drink_water();h.app.alert("To-do is due","测试提醒",4,false);
     for _ in 0..60 {h.frame(vec![]);}assert_eq!(h.app.pet_state(),PetState::Satisfied);
     assert!(h.app.notice.is_some());
     let atlas=h.ctx.tex_manager().read().allocated().find_map(|(id,meta)|(meta.name=="daozai-expressions").then_some(*id)).expect("表情图集已加载");
@@ -3748,14 +3748,14 @@ fn quiet_water_hours_cover_overnight(){
 #[test]
 fn repeated_system_changes_merge_without_losing_history(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
-    h.app.alert("系统音量","音量 20%",5,false);h.frame(vec![]);
-    h.app.alert("系统音量","音量 30%",5,false);h.frame(vec![]);
+    h.app.alert("System volume","音量 20%",5,false);h.frame(vec![]);
+    h.app.alert("System volume","音量 30%",5,false);h.frame(vec![]);
     assert_eq!(h.app.notice.as_ref().unwrap().body,"音量 30%");assert_eq!(h.app.history.len(),2);assert!(h.app.alerts.is_empty());
 }
 #[test]
 fn windows_notification_echo_does_not_duplicate_own_reminders(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
-    h.app.alert("喝水时间到了","喝点水吧",2,true);
+    h.app.alert("Time to drink water","喝点水吧",2,true);
     h.app.settings.read_notifications=true;h.app.receive_notification("Windows 通知".into(),"test".into(),"喝水时间到了 · 喝点水吧".into());assert_eq!(h.app.history.len(),1);
     assert_eq!(h.app.alerts.len(),1,"岛仔发出的系统通知不能再次进入岛内通知队列");
     h.app.notification_apps.items.push(("mail".into(),"邮件".into(),true));h.app.receive_notification("邮件".into(),"mail".into(),"收到一封新邮件".into());assert_eq!(h.app.alerts.len(),2);assert!(h.app.notification_bell_until>h.app.t);
@@ -3840,7 +3840,7 @@ fn sit_notice_and_page_buttons_reset_the_timer(){
     h.app.sit_start=h.t-70.0*60.0;h.app.alert(SIT_TITLE,"已连续坐了 70 分钟",2,false);for _ in 0..60 {h.frame(vec![]);}
     h.click_text("稍后");assert!(h.app.notice.is_none());assert!((h.app.sit_due()-h.t-600.0).abs()<5.0);assert_eq!(h.app.water.drunk_ml,0);
     h.app.alert(SIT_TITLE,"已连续坐了 70 分钟",2,false);for _ in 0..60 {h.frame(vec![]);}
-    h.click_text("起身了");assert!(h.app.notice.is_none());assert_eq!(h.app.sat_minutes(),0);assert_eq!(h.app.water.drunk_ml,0);
+    h.click_text("Stood");assert!(h.app.notice.is_none());assert_eq!(h.app.sat_minutes(),0);assert_eq!(h.app.water.drunk_ml,0);
     // 健康页：点「久坐」分段切换，同一位置的主按钮变成「起身了」、开关管久坐；点「喝水」切回
     h.app.sit_start=h.t-30.0*60.0;
     h.hover(Pos2::new(WIN_W/2.0,12.0),1.0);h.app.go(2,1.0);h.hover(H::local(300.0,60.0),0.8);
@@ -3855,8 +3855,8 @@ fn sit_notice_and_page_buttons_reset_the_timer(){
 #[test]
 fn water_notice_buttons_work_without_opening_panel(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
-    h.app.alert("喝水时间到了","该喝水了",2,false);for _ in 0..60 {h.frame(vec![]);}
-    h.click_text("喝一口");assert_eq!(h.app.water.drunk_ml,250);assert!(h.app.notice.is_none());
+    h.app.alert("Time to drink water","该喝水了",2,false);for _ in 0..60 {h.frame(vec![]);}
+    h.click_text("Drink");assert_eq!(h.app.water.drunk_ml,250);assert!(h.app.notice.is_none());
 }
 #[test]
 fn focus_completion_offers_starting_the_break(){
@@ -3879,24 +3879,24 @@ fn todo_completed_items_move_down_and_undo_restores_the_original_order(){
 fn todo_edit_choice_can_edit_other_rows_and_completed_items(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.todos.items=["第一项","第二项","已完成任务"].into_iter().map(crate::model::TodoItem::new).collect();h.app.todos.items[2].done_on=Some("2026-10-28".into());
-    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("改一下");
+    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("Edit");
     assert!(h.app.editing.is_none(),"多条待办应先选择，不能默认修改第一项");h.frame(vec![]);h.click_text("第二项");
     assert_eq!(h.app.editing,Some(1));h.app.buf="第二项已修改".into();h.frame(vec![egui::Event::Key{key:egui::Key::Enter,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);
     assert_eq!(h.app.todos.items[0].text,"第一项");assert_eq!(h.app.todos.items[1].text,"第二项已修改");assert!(h.app.todos.items[2].done_on.is_some());
-    h.frame(vec![]);h.click_text("改一下");h.frame(vec![]);h.click_text("已完成任务");assert_eq!(h.app.editing,Some(2));
+    h.frame(vec![]);h.click_text("Edit");h.frame(vec![]);h.click_text("已完成任务");assert_eq!(h.app.editing,Some(2));
     h.frame(vec![egui::Event::Key{key:egui::Key::Escape,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);assert!(!h.app.is_editing());assert!(h.app.todos.items[2].done_on.is_some());
 }
 
 #[test]
 fn todo_edit_choice_keeps_a_single_completed_task_editable(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.app.todos.items=vec![crate::model::TodoItem::new("已完成任务")];h.app.todos.items[0].done_on=Some("2026-10-28".into());
-    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("改一下");assert_eq!(h.app.editing,Some(0),"只有一条时可直接编辑，完成状态不能禁用编辑");
+    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("Edit");assert_eq!(h.app.editing,Some(0),"只有一条时可直接编辑，完成状态不能禁用编辑");
 }
 
 #[test]
 fn todo_edit_choice_reaches_scrolled_items_and_cancels_without_changes(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.app.todos.items=(0..7).map(|i|crate::model::TodoItem::new(format!("任务 {i}"))).collect();
-    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("改一下");assert!(h.app.editing.is_none());
+    h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);h.click_text("Edit");assert!(h.app.editing.is_none());
     h.hover(H::local(300.0,60.0),0.2);for _ in 0..7{h.wheel(-24.0);}assert_eq!(h.app.page(),4,"选择事项时滚到末尾也不能翻页");h.frame(vec![]);h.click_text("任务 6");assert_eq!(h.app.editing,Some(6));
     h.frame(vec![egui::Event::Key{key:egui::Key::Escape,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);assert!(!h.app.is_editing());assert_eq!(h.app.todos.items[6].text,"任务 6");assert!(h.app.todos.items.iter().all(|t|t.done_on.is_none()));
 }
@@ -3912,14 +3912,14 @@ fn todo_completed_reordering_does_not_complete_the_next_item_on_a_double_click()
 #[test]
 fn todo_edit_choice_can_cancel_without_toggling_or_deleting_items(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.app.todos.items=["任务甲","任务乙"].into_iter().map(crate::model::TodoItem::new).collect();h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);
-    h.click_text("改一下");h.frame(vec![]);h.click_text("取消");assert!(!h.app.is_editing());assert_eq!(h.app.todos.items.len(),2);assert!(h.app.todos.items.iter().all(|t|t.done_on.is_none()));
-    h.frame(vec![]);h.click_text("改一下");h.frame(vec![egui::Event::Key{key:egui::Key::Escape,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);assert!(!h.app.is_editing());assert_eq!(h.app.todos.items.len(),2);
+    h.click_text("Edit");h.frame(vec![]);h.click_text("Cancel");assert!(!h.app.is_editing());assert_eq!(h.app.todos.items.len(),2);assert!(h.app.todos.items.iter().all(|t|t.done_on.is_none()));
+    h.frame(vec![]);h.click_text("Edit");h.frame(vec![egui::Event::Key{key:egui::Key::Escape,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);assert!(!h.app.is_editing());assert_eq!(h.app.todos.items.len(),2);
 }
 
 #[test]
 fn todo_edit_choice_keeps_the_selected_item_when_an_earlier_item_is_deleted(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.app.todos.items=["第一项","第二项","第三项"].into_iter().map(crate::model::TodoItem::new).collect();h.app.show_page(4);h.hover(H::local(300.0,60.0),1.0);
-    h.click_text("改一下");h.frame(vec![]);h.click_text("第二项");h.frame(vec![]);h.click(h.ctx.read_response(egui::Id::new(("card",true,("todo-delete",0usize)))).unwrap().rect.center());
+    h.click_text("Edit");h.frame(vec![]);h.click_text("第二项");h.frame(vec![]);h.click(h.ctx.read_response(egui::Id::new(("card",true,("todo-delete",0usize)))).unwrap().rect.center());
     assert_eq!(h.app.editing,Some(0),"删除前面的条目后，编辑目标仍须是第二项");h.app.buf="第二项已修改".into();h.frame(vec![egui::Event::Key{key:egui::Key::Enter,physical_key:None,pressed:true,repeat:false,modifiers:Default::default()}]);assert_eq!(h.app.todos.items.iter().map(|t|t.text.as_str()).collect::<Vec<_>>(),["第二项已修改","第三项"]);
 }
 
@@ -4014,7 +4014,7 @@ fn focus_page_selects_stopped_phases_and_starts_only_from_play(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.settings.focus_minutes=30;h.app.settings.rest_minutes=7;
     h.hover(Pos2::new(WIN_W/2.0,12.0),1.0);h.app.go(1,1.0);h.hover(H::local(260.0,70.0),1.0);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="休息")));
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="Break")));
     h.click(H::local(336.0,106.5));
     assert!(h.app.pomo.phase==Phase::Rest && !h.app.pomo.running);
     assert_eq!(h.app.pomo.remaining,420.0,"休息采用设置中的时长");
@@ -4141,7 +4141,7 @@ fn music_seek_drag_previews_and_commits_on_release(){
 #[test]
 fn volume_hud_drag_maps_pointer_to_percentage(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
-    h.app.alert("系统音量","音量 0%",5,false);
+    h.app.alert("System volume","音量 0%",5,false);
     for _ in 0..60 {h.frame(vec![]);}
     assert!(!h.app.open);
     h.click_notice_badge();
@@ -4165,7 +4165,7 @@ fn bluetooth_connection_soon_after_initial_scan_is_not_suppressed(){
     h.t=2.0;
     h.bt=vec![crate::bt::Device{id:"shokz".into(),name:"Shokz".into(),battery:Some(100),kind:crate::bt::DeviceKind::Bone}];
     h.frame(vec![]);
-    assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("蓝牙设备"));
+    assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("Bluetooth device"));
 }
 
 #[test]
@@ -4173,14 +4173,14 @@ fn bluetooth_audio_connection_takes_precedence_over_volume_notice(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     for volume_already_visible in [false,true] {
         let mut h=H::new();h.frame(vec![]);
-        h.app.alert("系统音量","音量 80%",5,false);
+        h.app.alert("System volume","音量 80%",5,false);
         if volume_already_visible {h.frame(vec![]);}
         h.bt=vec![crate::bt::Device{id:"audio".into(),name:"Shokz".into(),battery:Some(80),kind:crate::bt::DeviceKind::Bone}];
         h.frame(vec![]);
-        assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("蓝牙设备"),"耳机连接应优先于音量提示");
-        assert!(!h.app.alerts.iter().any(|a|a.title=="系统音量"),"切换耳机产生的音量提示不应延后补弹");
+        assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("Bluetooth device"),"耳机连接应优先于音量提示");
+        assert!(!h.app.alerts.iter().any(|a|a.title=="System volume"),"切换耳机产生的音量提示不应延后补弹");
         h.t+=3.0;h.frame(vec![]);
-        h.app.alert("系统音量","音量 60%",5,false);h.frame(vec![]);
+        h.app.alert("System volume","音量 60%",5,false);h.frame(vec![]);
         assert_eq!(h.app.notice.as_ref().map(|a|a.body.as_str()),Some("音量 60%"),"连接后手动调节音量应正常提示");
     }
 }
@@ -4189,10 +4189,10 @@ fn bluetooth_audio_connection_takes_precedence_over_volume_notice(){
 fn bluetooth_keyboard_connection_keeps_unrelated_volume_notice(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let mut h=H::new();h.frame(vec![]);
-    h.app.alert("系统音量","音量 60%",5,false);h.frame(vec![]);
+    h.app.alert("System volume","音量 60%",5,false);h.frame(vec![]);
     h.bt=vec![crate::bt::Device{id:"keyboard".into(),name:"Keyboard".into(),battery:None,kind:crate::bt::DeviceKind::Keyboard}];h.frame(vec![]);
-    assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("系统音量"));
-    assert!(h.app.alerts.iter().any(|a|a.title=="蓝牙设备"));
+    assert_eq!(h.app.notice.as_ref().map(|a|a.title.as_str()),Some("System volume"));
+    assert!(h.app.alerts.iter().any(|a|a.title=="Bluetooth device"));
 }
 
 #[test]
@@ -4464,7 +4464,7 @@ fn an_open_page_and_lyrics_can_coexist_with_notifications_and_the_bell(){
     h.app.notification_apps.items.push(("mail.test".into(),"邮件".into(),true));h.app.settings.read_notifications=true;h.app.receive_notification("邮件".into(),"mail.test".into(),"收到新邮件".into());h.frame(vec![]);
     assert!(h.app.island_lyric().is_some(),"通知铃铛不能关闭岛上歌词");
     h.hover(Pos2::new(WIN_W/2.0,12.0),1.0);h.hover(H::local(300.0,60.0),0.5);assert!(h.app.open);
-    h.app.alert("键盘输入语言","中文",5,false);for _ in 0..60{h.frame(vec![]);}
+    h.app.alert("Keyboard input language","中文",5,false);for _ in 0..60{h.frame(vec![]);}
     assert!(h.app.open);
     assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="Track")),"展开页面保留歌曲信息");
     assert!(!h.app.compact_notices(),"展开页面时不使用岛上歌词的小图标提示");
@@ -4484,7 +4484,7 @@ fn right_notice_preview(){
     for frame in 0..420{
         let t=frame as f64/30.0;
         if frame==90{h.app.alert("大写锁定","已开启",5,false);}
-        if frame==240{h.app.alert("蓝牙设备","OpenMove by Shokz · 电量 80%",5,false);}
+        if frame==240{h.app.alert("Bluetooth device","OpenMove by Shokz · 电量 80%",5,false);}
         let env=Env{t,clock:"09:41:00".into(),today:"2026-11-01".into(),date:"11月1日 周日".into(),media:h.media.clone(),..Default::default()};
         let raw=egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,Vec2::new(crate::app::CANVAS_W,WIN_H))),time:Some(t),viewports:std::iter::once((egui::ViewportId::ROOT,egui::ViewportInfo{native_pixels_per_point:Some(1.5),..Default::default()})).collect(),..Default::default()};
         let output=h.ctx.run(raw,|ctx|{egui::CentralPanel::default().frame(egui::Frame::new()).show(ctx,|ui|{h.app.frame(ui,Rect::from_min_size(Pos2::ZERO,Vec2::new(WIN_W,WIN_H)),&env);});});
@@ -4511,7 +4511,7 @@ fn hud_expands_smoothly_from_collapsed_width(){
 fn bluetooth_notification_keeps_its_full_message_outside_lyric_mode(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let mut h=H::new();for _ in 0..90 {h.frame(vec![]);}
-    h.app.alert("蓝牙设备","OpenMove by Shokz · 电量 80%",5,false);
+    h.app.alert("Bluetooth device","OpenMove by Shokz · 电量 80%",5,false);
     for _ in 0..60 {h.frame(vec![]);}
     assert!((h.app.current_width()-crate::app::HUD_W-h.app.pet_space()).abs()<1.0);
     assert!(h.region.height()>60.0,"两行蓝牙提示保持完整高度");
@@ -4524,10 +4524,10 @@ fn hud_repeated_volume_changes_do_not_restart_entrance(){
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let mut h=H::new();
     h.frame(vec![]);
-    h.app.alert("系统音量","音量 20%",5,false);
+    h.app.alert("System volume","音量 20%",5,false);
     for _ in 0..45 {h.frame(vec![]);}
     let before=h.app.current_width();
-    h.app.alert("系统音量","音量 30%",5,false);
+    h.app.alert("System volume","音量 30%",5,false);
     h.frame(vec![]);
     assert!((h.app.current_width()-before).abs()<5.0);
     assert_eq!(h.app.notice.as_ref().unwrap().body,"音量 30%");
@@ -4563,7 +4563,7 @@ fn bluetooth_badge_follows_connect_and_disconnect(){
     assert_eq!(h.app.notice.as_ref().map(|a|a.body.as_str()),Some("Buds · 电量 80%"));
     // 没有设备时不留残留状态。
     h.t=40.0;h.bt.clear();h.frame(vec![]);
-    assert!(h.app.bt_shown.is_empty()&&h.app.notice.as_ref().is_none_or(|a|a.title!="蓝牙设备"||a.body=="Buds · 已断开"));
+    assert!(h.app.bt_shown.is_empty()&&h.app.notice.as_ref().is_none_or(|a|a.title!="Bluetooth device"||a.body=="Buds · 已断开"));
 }
 
 #[test]
@@ -4844,7 +4844,7 @@ fn calendar_setup_does_not_overlay_music() {
 fn language_notice_text_is_vertically_centered() {
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
     let mut h=H::new();h.frame(vec![]);
-    h.app.alert("键盘输入语言","英语",5,false);
+    h.app.alert("Keyboard input language","英语",5,false);
     for _ in 0..60 {h.frame(vec![]);}
     h.click_notice_badge();
     fn find(shapes:&[egui::epaint::ClippedShape])->Option<Rect>{
@@ -4905,9 +4905,9 @@ fn hud_titles_and_states_share_the_icon_center_without_overlapping() {
         ("网络连接","Wi-Fi · 网络已连接","Wi-Fi","网络已连接"),
         ("网络连接","以太网 · 网络已断开","以太网","网络已断开"),
         ("大写锁定","已开启","大写锁定","已开启"),
-        ("键盘输入语言","中文","输入语言","中文"),
-        ("电源已连接","当前电量 76%","电源已连接","当前电量 76%"),
-        ("已切换电池供电","当前电量 76%","电池供电","当前电量 76%"),
+        ("Keyboard input language","中文","输入语言","中文"),
+        ("Power connected","当前电量 76%","Power connected","当前电量 76%"),
+        ("On battery","当前电量 76%","电池供电","当前电量 76%"),
     ] {
         let mut h=H::new();h.frame(vec![]);h.app.alert(title,body,5,false);
         for _ in 0..60{h.frame(vec![]);}
@@ -4922,7 +4922,7 @@ fn hud_titles_and_states_share_the_icon_center_without_overlapping() {
 #[test]
 fn low_power_notice_dismisses_without_opening_the_mail_page() {
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
-    h.frame(vec![]);h.app.alert("电量偏低","剩余 18% · 请连接电源",5,false);
+    h.frame(vec![]);h.app.alert("Battery low","剩余 18% · 请连接电源",5,false);
     for _ in 0..60{h.frame(vec![]);}
     h.click_text("知道了");
     assert!(h.app.notice.is_none());
@@ -4942,7 +4942,7 @@ fn code_copy_confirmation_stays_below_the_island_and_does_not_capture_hover() {
         let copy=H::local(80.0,if detail{212.0}else{70.0});
         h.click(copy);h.hover(copy,0.35);
         let confirmation=|h:&H|h.shapes.iter().find_map(|shape|match &shape.shape {
-            egui::Shape::Text(text) if text.galley.text()=="验证码已复制"=>Some(text.visual_bounding_rect()),_=>None,
+            egui::Shape::Text(text) if text.galley.text()=="Code copied"=>Some(text.visual_bounding_rect()),_=>None,
         });
         let bounds=confirmation(&h).expect("复制后应显示确认提示");
         assert!(bounds.top()>PH+4.0,"确认提示应在岛下方：{bounds:?}");
@@ -5030,7 +5030,7 @@ fn todo_reminder_picker_is_embedded_in_the_island(){
     for _ in 0..90 {h.frame(vec![]);}
     assert_eq!(h.app.expanded_height(),PH,"右侧滚轮应保持待办页原来的高度");
     assert!(h.hit.height()<=PH+2.0,"选择时间不能撑大岛体");
-    for label in ["准备会议","已完成","取消","完成","暂不提醒"] {
+    for label in ["准备会议","done","Cancel","完成","暂不提醒"] {
         let (rect,clip)=h.shapes.iter().find_map(|s|match &s.shape {
             egui::Shape::Text(t) if t.galley.text()==label=>Some((t.visual_bounding_rect(),s.clip_rect)),_=>None,
         }).unwrap_or_else(||panic!("岛内缺少选项：{label}"));
@@ -5092,7 +5092,7 @@ fn reminder_picker_rejects_past_time_and_cancel_preserves_the_task(){
     h.app.open_task_reminder(0);h.picker_click("完成");h.picker_frame(vec![]);
     assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="请选择晚于当前的时间")));
     assert_eq!(h.app.todos.items[0].due,Some(old.clone()));
-    h.picker_click("取消");assert!(h.app.task_dialog.is_none());assert_eq!(h.app.todos.items[0].due,Some(old));
+    h.picker_click("Cancel");assert!(h.app.task_dialog.is_none());assert_eq!(h.app.todos.items[0].due,Some(old));
 }
 
 #[test]
@@ -5290,7 +5290,7 @@ fn reminder_and_reader_layout_gallery(){
         for f in 0..=last{
             let raw=egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,egui::vec2(w as f32,height as f32))),time:Some(f as f64/60.0),viewports:std::iter::once((egui::ViewportId::ROOT,egui::ViewportInfo{native_pixels_per_point:Some(ppp),..Default::default()})).collect(),..Default::default()};
             let out=h.ctx.run(raw,|ctx|if picker{
-                let env=Env{t:f as f64/60.0,clock:"09:41:00".into(),today:chrono::Local::now().date_naive().to_string(),date:"周日".into(),..Default::default()};
+                let env=Env{t:f as f64/60.0,clock:"09:41:00".into(),today:chrono::Local::now().date_naive().to_string(),date:"Sun".into(),..Default::default()};
                 egui::CentralPanel::default().frame(egui::Frame::new()).show(ctx,|ui|{let win=ui.max_rect();h.app.frame(ui,win,&env);});
             }else{h.app.mail_reader_ui(ctx)});raster.update_textures(&out.textures_delta);
             if f==last{raster.buf.fill(if picker{[0.07,0.09,0.13,1.0]}else{[0.0,0.0,0.0,1.0]});raster.draw(&h.ctx.tessellate(out.shapes,out.pixels_per_point),out.pixels_per_point);let mut rgba=Vec::new();raster.to_rgba8(&mut rgba);image::save_buffer(dest.join(if picker{"reminder-picker.png"}else{"mail-reader.png"}),&rgba,(w as f32*ppp)as u32,(height as f32*ppp)as u32,image::ColorType::Rgba8).unwrap();}
@@ -5348,7 +5348,7 @@ fn ui_alignment_layout_gallery(){
             let kind=match kind{"headphones"=>crate::bt::DeviceKind::Headphones,"keyboard"=>crate::bt::DeviceKind::Keyboard,"mouse"=>crate::bt::DeviceKind::Mouse,"gamepad"=>crate::bt::DeviceKind::Gamepad,"phone"=>crate::bt::DeviceKind::Phone,"speaker"=>crate::bt::DeviceKind::Speaker,_=>crate::bt::DeviceKind::Other};
             h.app.bluetooth_alert(&crate::bt::Device{id:"preview".into(),name:"我的蓝牙设备 · 超长设备名称与连接状态".into(),battery:Some(100),kind},true);
         }
-        match name{"volume"=>{h.app.volume_ui=Some((64,false));h.app.alert("系统音量","64%",0,false);},"caps"=>h.app.alert("大写锁定","已开启",0,false),"language"=>h.app.alert("键盘输入语言","中文（简体，中国）",0,false),"network"=>h.app.alert("网络连接","Wi-Fi · 网络已连接",0,false),"power"=>h.app.alert("电源已连接","当前电量 76%",0,false),"meeting"=>h.app.meeting_alert(crate::mail::Meeting{ all_day:false,title:"产品方案评审与下阶段开发排期确认".into(),start:chrono::Local::now().timestamp()+600,end:None,at:"11-01 10:00".into(),uid:"preview".into()},"邮件 · product-and-design-team@company-example.com".into(),5),_=>{}}
+        match name{"volume"=>{h.app.volume_ui=Some((64,false));h.app.alert("System volume","64%",0,false);},"caps"=>h.app.alert("大写锁定","已开启",0,false),"language"=>h.app.alert("Keyboard input language","中文（简体，中国）",0,false),"network"=>h.app.alert("网络连接","Wi-Fi · 网络已连接",0,false),"power"=>h.app.alert("Power connected","当前电量 76%",0,false),"meeting"=>h.app.meeting_alert(crate::mail::Meeting{ all_day:false,title:"产品方案评审与下阶段开发排期确认".into(),start:chrono::Local::now().timestamp()+600,end:None,at:"11-01 10:00".into(),uid:"preview".into()},"邮件 · product-and-design-team@company-example.com".into(),5),_=>{}}
         if name=="meeting-dingtalk" || name=="meeting-wecom" {
             h.app.meeting_alert(crate::mail::Meeting{all_day:false,title:"项目评审与下阶段安排".into(),start:chrono::Local::now().timestamp()+600,end:None,at:String::new(),uid:name.into()},if name=="meeting-dingtalk"{"钉钉"}else{"企业微信"}.into(),7);
         }
@@ -5749,9 +5749,9 @@ fn settings_theme_follows_system_and_preserves_island_style() {
                 if frame==2 {
                     let pairs:&[(&str,&str)]=match tab {
                         1=>&[("时间偏移","0.35 秒")],
-                        2=>&[("专注","25 分钟"),("休息","5 分钟")],
-                        3=>&[("每日目标","2000 ml"),("每次记录","250 ml"),("提醒间隔","45 分钟"),("提醒时段","9 时")],
-                        7=>&[("验证码隐藏","60 秒"),("检查间隔","120 秒"),("会议提前","15 分钟"),("邮箱","输入邮箱地址"),("授权码","输入邮箱授权码")],
+                        2=>&[("Focus","25 分钟"),("Break","5 分钟")],
+                        3=>&[("每日目标","2000 ml"),("每次记录","250 ml"),("提醒间隔","45 分钟"),("Reminder hours","9 时")],
+                        7=>&[("验证码隐藏","60 秒"),("检查间隔","120 秒"),("会议提前","15 分钟"),("Mail","输入邮箱地址"),("授权码","输入邮箱授权码")],
                         8=>&[("用户名","输入用户名或粘贴账号信息"),("密码","输入平台生成的密码")],
                         11=>&[("服务","Codex"),("备注","例如：个人、工作、备用"),("选择该账号的登录文件","选择…")],
                         _=>&[],
@@ -5812,7 +5812,7 @@ fn about_support_preview() {
             if frame==3 {
                 let has_wechat=child.shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::Text(text) if text.galley.text()=="微信支付"));
                 assert_eq!(has_wechat,open);
-                for label in [if open{"返回"}else{"请喝咖啡 · 支持作者"},"完全自愿 · 感谢每一份支持 · 不影响功能使用"] {
+                for label in [if open{"Back"}else{"请喝咖啡 · 支持作者"},"完全自愿 · 感谢每一份支持 · 不影响功能使用"] {
                     let shape=child.shapes.iter().find(|shape|matches!(&shape.shape,egui::Shape::Text(text) if text.galley.text()==label)).expect("按钮和说明必须可见");
                     assert!(shape.clip_rect.contains_rect(shape.shape.visual_bounding_rect()),"默认窗口中内容不能被裁切：{label}");
                 }
@@ -6065,7 +6065,7 @@ fn avoidance_picker_add_remove_and_save() {
     }
     click(&mut h,point(&out,"记事本"));
     let out=draw(&mut h,vec![]);
-    click(&mut h,point(&out,"添加"));
+    click(&mut h,point(&out,"Add"));
     assert!(!h.app.avoidance.open);
     assert_eq!(h.app.settings.avoid_apps.len(),1);
     h.app.settings.avoid_browsers=false;h.app.settings.save();
@@ -6164,9 +6164,9 @@ fn compact_canvas_preserves_panel_and_notice_pixels(){
 #[test]
 fn external_notice_respects_permissions_masks_preview_and_never_reemits(){
  let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();h.frame(vec![]);
- h.app.receive_notification("系统音量".into(),"external.test".into(),"验证码 123456".into());assert!(h.app.alerts.is_empty());
+ h.app.receive_notification("System volume".into(),"external.test".into(),"验证码 123456".into());assert!(h.app.alerts.is_empty());
  h.app.settings.read_notifications=true;
- h.app.receive_notification("系统音量".into(),"external.test".into(),"验证码 123456".into());
+ h.app.receive_notification("System volume".into(),"external.test".into(),"验证码 123456".into());
  let a=h.app.alerts.back().unwrap();assert!(!a.is_hud());assert!(!a.body.contains("123456"));assert_eq!(a.page,usize::MAX);
  assert!(h.app.history.is_empty());assert!(!h.app.pending.iter().any(|c|matches!(c,crate::app::Cmd::Notify(..))));
  h.app.tick_alerts();assert!(h.app.notice.is_some());h.app.settings.read_notifications=false;h.app.tick_alerts();assert!(h.app.notice.is_none());
@@ -6335,15 +6335,15 @@ fn bluetooth_switch_clears_notices_and_restarts_with_fresh_baseline(){
     h.app.bluetooth_alert(&device,true);h.frame(vec![]);
     h.app.bluetooth_alert(&device,false);
     h.app.settings.bluetooth_notifications=false;h.frame(vec![]);
-    assert!(h.app.notice.as_ref().is_none_or(|a|a.title!="蓝牙设备"));
-    assert!(!h.app.alerts.iter().any(|a|a.title=="蓝牙设备"));
+    assert!(h.app.notice.as_ref().is_none_or(|a|a.title!="Bluetooth device"));
+    assert!(!h.app.alerts.iter().any(|a|a.title=="Bluetooth device"));
     h.app.bluetooth_alert(&device,true);
-    assert!(!h.app.alerts.iter().any(|a|a.title=="蓝牙设备"));
+    assert!(!h.app.alerts.iter().any(|a|a.title=="Bluetooth device"));
     h.app.settings.save();assert!(!crate::model::Settings::load().bluetooth_notifications);
     h.bt=vec![device];h.app.settings.bluetooth_notifications=true;h.frame(vec![]);
-    assert!(h.app.notice.as_ref().is_none_or(|a|a.title!="蓝牙设备"));
+    assert!(h.app.notice.as_ref().is_none_or(|a|a.title!="Bluetooth device"));
     h.bt.clear();h.frame(vec![]);
-    assert!(h.app.notice.as_ref().is_some_and(|a|a.title=="蓝牙设备") || h.app.alerts.iter().any(|a|a.title=="蓝牙设备"));
+    assert!(h.app.notice.as_ref().is_some_and(|a|a.title=="Bluetooth device") || h.app.alerts.iter().any(|a|a.title=="Bluetooth device"));
 }
 
 #[test]
@@ -6619,7 +6619,7 @@ fn quota_cards_expose_names_colors_settings_and_connection(){
     click(&mut h,"重试");assert!(h.app.pending.iter().any(|cmd|matches!(cmd,crate::app::Cmd::QuotaRefresh)));assert!(!h.app.quota.connect_open);
     click(&mut h,"重新连接");assert!(h.app.quota.connect_open);assert_eq!(h.app.quota.connect_target.as_deref(),Some("preview-0"));
     h.app.quota.connect_open=false;for _ in 0..8{frame(&mut h,vec![]);}click(&mut h,"＋ 添加账号");assert!(h.app.quota.connect_open);assert!(h.app.quota.connect_target.is_none());assert!(h.app.quota.alias.is_empty());
-    h.app.quota.connect_open=false;for _ in 0..8{frame(&mut h,vec![]);}assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="···"||t.galley.text()=="设置")));
+    h.app.quota.connect_open=false;for _ in 0..8{frame(&mut h,vec![]);}assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()=="···"||t.galley.text()=="Settings")));
 }
 
 #[test]
@@ -6760,7 +6760,7 @@ fn side_dock_gallery(){
         h.app.show_page(4);
         shoot_side(&mut h,&mut r,&dest,&format!("side-{tag}-todo"),50,Some(Pos2::new(edge_x,hgt/2.0)));
         shoot_side(&mut h,&mut r,&dest,&format!("side-{tag}-closed"),320,away);
-        h.app.alert("待办到时间了","回复设计评审意见",4,false);
+        h.app.alert("To-do is due","回复设计评审意见",4,false);
         shoot_side(&mut h,&mut r,&dest,&format!("side-{tag}-notice"),40,away);
     }
     // 播放音乐 + 专注中 + 毛玻璃；极简模式；侧边提示。
@@ -7125,15 +7125,15 @@ fn messenger_notice_status_gallery(){
                 6=>h.app.messenger_unavailable("QQ 窗口暂时无法打开"),
                 7=>{h.app.show_page(4);h.app.messenger_unavailable("QQ 账号已退出");},
                 8=>h.app.alert("大写锁定","已开启",5,false),
-                9=>h.app.alert("系统音量","音量 60%",5,false),
+                9=>h.app.alert("System volume","音量 60%",5,false),
                 10=>h.app.bluetooth_alert(&crate::bt::Device{id:"preview".into(),name:"耳机".into(),battery:Some(80),kind:crate::bt::DeviceKind::Headphones},true),
-                11=>h.app.alert("电量偏低","剩余 15% · 请连接电源",5,false),
+                11=>h.app.alert("Battery low","剩余 15% · 请连接电源",5,false),
                 12=>{
                     let start=chrono::Local::now()+chrono::Duration::minutes(10);
-                    h.app.meeting_alert(crate::mail::Meeting{all_day:false,title:"团队会议".into(),start:start.timestamp(),end:None,at:start.format("%m-%d %H:%M").to_string(),uid:"preview".into()},"本机日程".into(),7);
+                    h.app.meeting_alert(crate::mail::Meeting{all_day:false,title:"团队会议".into(),start:start.timestamp(),end:None,at:start.format("%m-%d %H:%M").to_string(),uid:"preview".into()},"Local calendar".into(),7);
                 },
-                13=>h.app.alert("喝水时间到了","休息一下，喝 250 ml 水吧",2,false),
-                14=>h.app.alert("待办到时间了","整理本周资料",4,false),
+                13=>h.app.alert("Time to drink water","休息一下，喝 250 ml 水吧",2,false),
+                14=>h.app.alert("To-do is due","整理本周资料",4,false),
                 _=>unreachable!(),
             }}
             let cursor=(case==7).then(||H::local(160.0,12.0));
@@ -7558,7 +7558,7 @@ fn shelf_menu_last_action_fits_inside_window_and_works(){
     h.hover(point,1.5);
     assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t) if t.galley.text()==r"folder\menu-test.zip")));
     let label=h.shapes.iter().find_map(|s|match &s.shape{
-        egui::Shape::Text(t) if t.galley.text()=="从置物架移除"=>Some(Rect::from_min_size(t.pos,t.galley.size())),
+        egui::Shape::Text(t) if t.galley.text()=="Remove from shelf"=>Some(Rect::from_min_size(t.pos,t.galley.size())),
         _=>None,
     }).expect("右键菜单应显示移除操作");
     assert!(h.region.contains_rect(h.app.shelf_menu_rect.unwrap() + h.ctx.style().visuals.popup_shadow.margin()));
@@ -7740,13 +7740,13 @@ fn managed_mail_unread_filter_open_and_mark_read(){
     let mut snapshot=h.app.mail.manage.data[&("manage@example.com".into(),Folder::Inbox)].clone();snapshot.entries[0].1=true;
     h.app.mail_managed(Completed{request,result:Ok(snapshot)});h.hover(H::local(270.0,150.0),0.5);
     h.click(H::local(350.0,48.0));assert!(h.app.mail.open_uid.is_none());h.hover(H::local(200.0,80.0),0.4);
-    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="没有未读邮件")));
+    assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()=="No unread mail")));
 }
 #[test]
 fn managed_mail_trash_icon_and_restore_keep_inbox_uid_separate(){
     use crate::mail_manage::{Action,Folder,Snapshot,Completed};
     let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=managed_mail_fixture();
-    assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().starts_with("回收站"))),"回收站入口只显示图标");
+    assert!(!h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().starts_with("Trash"))),"回收站入口只显示图标");
     let item=h.app.mail.recent[0].clone();h.app.mail.manage.trash=vec![item];
     h.app.mail.manage.data.insert(("manage@example.com".into(),Folder::Trash),Snapshot{validity:9,entries:vec![(1,true)],items:vec![]});
     h.click(H::local(370.0,130.0));assert!(h.app.mail.manage.trash_open);
@@ -7852,12 +7852,12 @@ fn weather_page_shows_the_local_snapshot_and_forecast(){
         days:vec![
             crate::weather::Day{label:"今天".into(),date:"2026-11-09".into(),high:15.2,low:6.8,code:51,rain:60},
             crate::weather::Day{label:"明天".into(),date:"2026-11-10".into(),high:14.5,low:4.7,code:2,rain:0},
-            crate::weather::Day{label:"周三".into(),date:"2026-11-11".into(),high:17.4,low:5.0,code:2,rain:0},
-            crate::weather::Day{label:"周四".into(),date:"2026-11-12".into(),high:19.2,low:8.2,code:61,rain:25},
+            crate::weather::Day{label:"Wed".into(),date:"2026-11-11".into(),high:17.4,low:5.0,code:2,rain:0},
+            crate::weather::Day{label:"Thu".into(),date:"2026-11-12".into(),high:19.2,low:8.2,code:61,rain:25},
         ],at:chrono::Utc::now().timestamp()});
     h.app.show_page(8);h.hover(H::local(300.0,60.0),1.0);
     assert_eq!(h.app.page,8,"天气应是第九个页面");
-    for phrase in ["9°","毛毛雨","杭州","今天","明天","周三","周四","60%","体感","6°","湿度","58%","日出 06:52","日落 17:21"]{
+    for phrase in ["9°","毛毛雨","杭州","今天","明天","Wed","Thu","60%","体感","6°","湿度","58%","日出 06:52","日落 17:21"]{
         assert!(h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text().contains(phrase))),"天气页缺少：{phrase}");
     }
     for s in &h.shapes{if let egui::Shape::Text(t)=&s.shape{assert!(s.clip_rect.contains_rect(t.visual_bounding_rect()),"天气页文字被裁切：{}",t.galley.text());}}
@@ -8349,9 +8349,9 @@ fn closed_modules_stop_their_reminders_and_timers(){
         h.app.todos.items.push(crate::model::TodoItem{text:"交周报".into(),due:Some("2026-10-28 09:40".into()),..Default::default()});
         if !open {assert!(!h.app.pomo.running,"关闭专注模块时立即停止计时");h.app.pomo.running=true;}
         for _ in 0..60 {h.frame(vec![]);}
-        assert_eq!(raised(&h,"喝水时间到了"),open,"饮水模块开启={open}");
-        assert_eq!(raised(&h,"待办到时间了"),open,"待办模块开启={open}");
-        assert_eq!(raised(&h,"专注计时"),open,"专注模块开启={open}");
+        assert_eq!(raised(&h,"Time to drink water"),open,"饮水模块开启={open}");
+        assert_eq!(raised(&h,"To-do is due"),open,"待办模块开启={open}");
+        assert_eq!(raised(&h,"Focus timer"),open,"专注模块开启={open}");
         if !open {assert!(!h.app.pomo.running && h.app.todos.items[0].due.is_some() && !h.app.todos.items[0].reminded,"关闭期间不消耗提醒，重新开启后仍会提醒");}
     }
 }
@@ -8373,7 +8373,7 @@ fn background_services_follow_the_module_switch(){
 
 #[test]
 fn every_module_settings_tab_maps_to_its_page(){
-    let titles=["常规","音乐与歌词","专注","健康提醒","待办","置物","通知","邮箱","日程","关于","页面管理","AI 额度","天气"];
+    let titles=["常规","音乐与歌词","Focus","健康提醒","To-do","置物","通知","Mail","Event","关于","页面管理","AI quota","Weather"];
     let mut pages:Vec<_>=(0..titles.len()).filter_map(crate::extras::settings_tab_module).collect();
     for tab in 0..titles.len() {
         if let Some(page)=crate::extras::settings_tab_module(tab) {assert!(crate::app::PAGE_NAMES[page].chars().next()==titles[tab].chars().next(),"{} ↔ {}",titles[tab],crate::app::PAGE_NAMES[page]);}
@@ -8458,7 +8458,7 @@ fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     h.app.show_page(3);h.app.shelf_tab=1;
     h.hover(H::local(300.0,60.0),0.8);
     assert!(!h.app.clipboard.record_image(&img),"未开启时不记录图片");
-    assert!(!has(&h,"图片"),"未开启也没有图片记录时不显示「图片」分栏");
+    assert!(!has(&h,"Images"),"未开启也没有图片记录时不显示「图片」分栏");
 
     h.app.settings.clipboard_images=true;
     h.frame(vec![]);
@@ -8469,7 +8469,7 @@ fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     h.hover(H::local(300.0,60.0),0.3);
     assert!(has(&h,"一段文字") && !has(&h,"识字"),"「剪贴板」分栏只列文字");
 
-    h.click_text("图片");h.hover(H::local(300.0,60.0),0.3);
+    h.click_text("Images");h.hover(H::local(300.0,60.0),0.3);
     assert_eq!(h.app.shelf_tab,2);
     assert!(has(&h,"识字") && !has(&h,"一段文字"),"「图片」分栏只列图片");
     h.click_text("识字");
@@ -8486,7 +8486,7 @@ fn clipboard_images_are_opt_in_and_get_their_own_gallery_tab() {
     assert!(has(&h,"文字"),"识别过的图片按钮改为复制文字");
 
     // 图片分栏的「清空」只清图片。
-    h.click_text("清空");h.hover(H::local(300.0,60.0),0.1);h.click_text("确认");h.hover(H::local(300.0,60.0),0.3);
+    h.click_text("Clear");h.hover(H::local(300.0,60.0),0.1);h.click_text("Confirm");h.hover(H::local(300.0,60.0),0.3);
     let items=h.app.clipboard.lock().items.clone();
     assert_eq!(items.len(),1);assert!(items[0].image.is_none());
     assert!(h.app.clip_thumbs.is_empty(),"图片清空后缩略图缓存也释放");
