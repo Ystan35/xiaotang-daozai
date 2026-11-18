@@ -1003,7 +1003,9 @@ impl H {
         let dir = std::env::temp_dir().join(format!("daozai-test-{}-{}", std::process::id(), rand_id()));
         std::env::set_var("DAOZAI_DATA_DIR", &dir);
         let ctx = egui::Context::default();
-        let app = App::new(&ctx, Options { fetch_lyrics: false, pet_idle: 1e9 });
+        let mut app = App::new(&ctx, Options { fetch_lyrics: false, pet_idle: 1e9 });
+        // Live CPU/RAM numbers would make layout tests depend on the machine; tests that need them turn it on.
+        app.settings.show_system_stats=false;
         Self { ctx, app, t: 0.0, cursor: None,cmds:vec![],region:Rect::NOTHING,hit:Rect::NOTHING,animating:false,shapes:Vec::new(), bt:Vec::new(),media:Default::default(),power:(None,false),network:None,system_idle:None,screen_locked:false,browser_at_top:None,file_drop_zone:None,hovered_files:vec![],dropped_files:vec![] }
     }
     fn frame(&mut self, events: Vec<egui::Event>) {
@@ -8763,4 +8765,59 @@ fn ask_pictures_attach_show_a_thumbnail_and_go_with_the_next_question(){
     assert!(h.app.ask.attachment.is_none());
     h.app.ask_before_snip();for _ in 0..60 {h.frame(vec![]);}
     assert!(!h.app.ask.focused && !h.app.open,"截图前岛要收起，免得拍进去");
+}
+
+#[test]
+fn cpu_and_ram_chip_sits_before_the_battery_and_opens_task_manager(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let mut h=H::new();h.app.settings.pet=false;h.power=(Some(80),false);
+    for _ in 0..30{h.frame(vec![]);}
+    let without=h.app.resident.current();
+    assert!(without.x[crate::bar_layout::SYSTEM].is_none());
+    h.app.settings.show_system_stats=true;
+    h.app.sysstats.set(93.0,crate::sysstats::Memory{percent:61.0,used:10_522_669_875,total:17_179_869_184});
+    for _ in 0..60{h.frame(vec![]);}
+    let layout=h.app.resident.current();
+    let chip=layout.x[crate::bar_layout::SYSTEM].expect("CPU/RAM 应占位");
+    let battery=layout.x[crate::bar_layout::BATTERY].unwrap();
+    assert!(chip<battery,"CPU/RAM 在电池左侧");
+    assert!((layout.width-without.width-(crate::bar_layout::SYSTEM_WIDTH+12.0)).abs()<0.5,"药丸按芯片宽度变宽");
+    let text=|t:&str|h.shapes.iter().find_map(|s|match &s.shape{egui::Shape::Text(g)if g.galley.text()==t=>Some((g.visual_bounding_rect(),g.fallback_color)),_=>None});
+    let (cpu,cpu_color)=text("93%").expect("CPU 数值");
+    let (ram,ram_color)=text("61%").expect("RAM 数值");
+    assert!(text("CPU").is_some()&&text("RAM").is_some());
+    assert!(cpu.center().y<ram.center().y,"CPU 在上、RAM 在下");
+    assert_eq!(cpu_color,crate::sysstats_ui::load_color(93.0));assert_ne!(cpu_color,ram_color,"高负载换颜色");
+    assert!(crate::sysstats_ui::tooltip(Some(93.0),h.app.sysstats.memory).contains("9.8 of 16.0 GB"));
+    h.cmds.clear();h.click(cpu.center());
+    assert!(h.cmds.contains(&crate::app::Cmd::Open("taskmgr.exe".into())),"点击打开任务管理器");
+    h.app.settings.minimal=true;for _ in 0..60{h.frame(vec![]);}
+    assert!(h.app.resident.current().x[crate::bar_layout::SYSTEM].is_none(),"极简模式不显示");
+    std::fs::write(crate::model::config_dir().join("settings.txt"),"show_system_stats=0\n").unwrap();
+    assert!(!crate::model::Settings::load().show_system_stats);
+    std::fs::write(crate::model::config_dir().join("settings.txt"),"pet=1\n").unwrap();
+    assert!(crate::model::Settings::load().show_system_stats,"默认开启");
+}
+
+#[test]
+#[ignore="Exports the CPU/RAM chip on the collapsed bar and in the order preview"]
+fn system_stats_bar_preview(){
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let dest=std::path::PathBuf::from(std::env::var_os("DAOZAI_SYSTEM_PREVIEW_DIR").expect("preview dir"));std::fs::create_dir_all(&dest).unwrap();
+    for (name,cpu,ram,battery,skin) in [("system-bar",23.0,61.0,Some(80),crate::model::Skin::Classic),("system-bar-busy",93.0,78.0,None,crate::model::Skin::Classic),("system-bar-cream",23.0,61.0,Some(80),crate::model::Skin::Cream)] {
+        let mut h=H::new();h.app.settings.pet=false;h.app.settings.show_system_stats=true;h.app.settings.skin=skin;
+        h.app.sysstats.set(cpu,crate::sysstats::Memory{percent:ram,used:10<<30,total:16<<30});
+        let mut raster=crate::preview_raster::Raster::new(1280,120);
+        for frame in 0..90{
+            let t=frame as f64/60.0;let env=Env{t,clock:"18:07:00".into(),battery,charging:false,..Default::default()};
+            let raw=egui::RawInput{screen_rect:Some(Rect::from_min_size(Pos2::ZERO,Vec2::new(640.0,60.0))),time:Some(t),viewports:std::iter::once((egui::ViewportId::ROOT,egui::ViewportInfo{native_pixels_per_point:Some(2.0),..Default::default()})).collect(),..Default::default()};
+            let output=h.ctx.run(raw,|ctx|{egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx,|ui|{h.app.frame(ui,ui.max_rect(),&env);});});
+            raster.update_textures(&output.textures_delta);
+            if frame==89{
+                raster.buf.fill([0.09,0.11,0.18,1.0]);raster.draw(&h.ctx.tessellate(output.shapes,output.pixels_per_point),output.pixels_per_point);let mut rgba=Vec::new();raster.to_rgba8(&mut rgba);
+                image::save_buffer(dest.join(format!("{name}.png")),&rgba,1280,120,image::ColorType::Rgba8).unwrap();
+            }
+            raster.free_textures(&output.textures_delta);
+        }
+    }
 }

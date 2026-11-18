@@ -39,6 +39,8 @@ pub mod renderer;
 pub mod otp;
 pub mod quota;
 pub mod ask;
+pub mod sysstats;
+mod sysstats_ui;
 mod ask_ui;
 mod quota_ui;
 pub mod weather;

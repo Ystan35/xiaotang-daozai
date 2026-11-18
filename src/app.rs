@@ -824,6 +824,7 @@ pub struct App {
     /// 天气页的当前数据与后台拉取状态。
     pub(crate) weather: crate::weather::State,
     pub(crate) ask: crate::ask_ui::AskState,
+    pub(crate) sysstats: crate::sysstats::Sampler,
     pub(crate) updates: crate::updates::State,
     pub(crate) resident: bar::Motion,
     pub(crate) resident_power: (Option<u8>,bool),
@@ -959,6 +960,7 @@ impl App {
             claude_tracker: crate::claude_tracker::Tracker::load(), claude_tracker_checked: f64::NEG_INFINITY,
             weather,
             ask,
+            sysstats: Default::default(),
             updates: Default::default(),
             resident: Default::default(), resident_power:(None,false), auto_theme_checked: f64::NEG_INFINITY,
         }
@@ -1773,6 +1775,7 @@ impl App {
         self.quota_tick();
         self.weather_tick();
         self.ask_tick();
+        self.sysstats_tick();
         self.current_hour=env.hour();
         self.system_idle=env.idle_seconds;
         self.dt = dt;
@@ -1816,6 +1819,7 @@ impl App {
         let bell=self.t<self.notification_bell_until&&!self.compact_notices();
         self.resident_power=(env.battery,env.charging);
         let mut layout=Layout::new(self.settings.show_battery&&env.battery.is_some(),self.quota_bar_indices().len(),self.media.is_music()&&!bell,self.pomo.running,bell,self.pet_enabled(),self.weather_pill().is_some());
+        if self.system_stats_pill() {layout.add_system();}
         layout.reorder(&self.settings.resident_order);
         for (position,extra) in self.quota_balance_layout(&ctx){layout.balance_tail(position,extra);}
         if self.settings.clock_period!=0 { layout.widen_clock(40.0); }
@@ -2825,6 +2829,7 @@ impl App {
             let c=base.faded(compact_alpha);let c=if compact_alpha<0.8{c.ghost()}else{c};
             self.draw_quota_bar(&c,local_cx,&layout);
             if let Some(x)=layout.x[bar::WEATHER] { self.draw_pill_weather(&c,local_cx+x,&layout); }
+            if let Some(x)=layout.x[bar::SYSTEM] { self.draw_pill_system(&c,local_cx+x,&layout); }
         }
         if self.pomo.running && compact_alpha>0.004 {
             crate::focus_bar::draw(&base.faded(compact_alpha),local_cx+layout.x[bar::FOCUS].unwrap(),15.0,self.t,&self.pomo,self.phase_secs(self.pomo.phase),false);

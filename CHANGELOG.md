@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- CPU and memory on the island: the collapsed bar shows live CPU and RAM use just left of the battery, updated every couple of seconds; values turn amber above 70% and red above 90%. Hover for memory in GB, click to open Task Manager. Turn it off in Settings > Pages > Status items; hidden in minimal mode.
 - Ask opens directly with Ctrl+Alt+Space from any app, ready to type (Esc closes it). The text box now sits at the bottom under the conversation. Ask about pictures: snip part of the screen, attach an image file, or paste one with Ctrl+V; the picture goes with your next question and is never saved.
 - New Ask page: type a quick question on the island and Gemini answers in a few lines, with follow-ups in the same conversation, a Copy button and New chat. Add a free Google AI Studio key in Settings > Ask; it is stored in Windows Credential Manager, not in the settings file. Choose Flash or Flash-Lite. History is kept for 1, 3 (default) or 7 days and then deleted automatically, or turned off; Clear history removes it at once. Press 0 (or Ctrl+Alt+D, then 0) to jump there.
 - Easier page navigation: swipe left/right on a trackpad, use Shift+wheel or tilt the wheel, or drag the card sideways to turn one page; the vertical wheel keeps scrolling lists. Hover the dots under the card to see every page by name and click one to jump there. Keys 1–9 jump to that page, Home/End to the first/last, ←/→ step. Ctrl+Alt+D opens the island from anywhere for keyboard use (Esc or Ctrl+Alt+D again closes it).

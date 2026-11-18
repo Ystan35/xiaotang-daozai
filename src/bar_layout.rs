@@ -13,9 +13,12 @@ pub(crate) const MUSIC: usize = 6;
 pub(crate) const FOCUS: usize = 7;
 pub(crate) const BELL: usize = 8;
 pub(crate) const PET: usize = 9;
+/// CPU / RAM chip; not user-ordered, always grouped just left of the battery.
+pub(crate) const SYSTEM: usize = 10;
+pub(crate) const SYSTEM_WIDTH: f32 = 40.0;
 /// 天气徽标的基础槽宽；温度文字更长时由 `widen` 补足。
 pub(crate) const WEATHER_WIDTH: f32 = 38.0;
-const WIDTHS: [f32; 10] = [44.0,20.0,27.0,27.0,27.0,WEATHER_WIDTH,14.0,crate::focus_bar::WIDTH,20.0,32.0];
+const WIDTHS: [f32; 11] = [44.0,20.0,27.0,27.0,27.0,WEATHER_WIDTH,14.0,crate::focus_bar::WIDTH,20.0,32.0,SYSTEM_WIDTH];
 
 pub(crate) const DEFAULT_ORDER: [usize;6]=[BATTERY,PET,CLOCK,QUOTA,MUSIC,FOCUS];
 pub(crate) fn valid_order(order:&[usize])->bool {
@@ -74,6 +77,17 @@ impl Layout {
         for value in x.iter_mut().flatten() {*value-=width/2.0;}
         Self {width:width.max(96.0),x,widths,quotas}
     }
+    /// Adds the CPU / RAM chip at the left end; everything else moves right to keep the bar centred.
+    pub fn add_system(&mut self) {
+        let w=SYSTEM_WIDTH;
+        let left=self.x.iter().enumerate().filter_map(|(i,x)|x.map(|x|x-self.widths[i]/2.0)).fold(f32::INFINITY,f32::min);
+        let right=self.x.iter().enumerate().filter_map(|(i,x)|x.map(|x|x+self.widths[i]/2.0)).fold(f32::NEG_INFINITY,f32::max);
+        if !left.is_finite() {self.x[SYSTEM]=Some(0.0);self.width=self.width.max(w+32.0);return;}
+        let shift=(w+12.0)/2.0;
+        for x in self.x.iter_mut().flatten() {*x+=shift;}
+        self.x[SYSTEM]=Some(left+shift-12.0-w/2.0);
+        self.width=(right-left+w+12.0+32.0).max(96.0);
+    }
     pub fn quota_slots(&self)->impl Iterator<Item=usize> { (0..self.quotas).map(quota_slot) }
     /// 把某个槽加宽 extra：其余槽对称让位并记入总宽。点数文字、时段时钟、天气温度共用。
     pub fn widen(&mut self,slot:usize,extra:f32){
@@ -90,6 +104,7 @@ impl Layout {
         for slot in order.iter().copied().chain(std::iter::once(BELL)) {
             let slots:Vec<usize>=if slot==QUOTA{self.quota_slots().collect()}
                 else if slot==CLOCK&&self.x[WEATHER].is_some(){vec![CLOCK,WEATHER]}
+                else if slot==BATTERY&&self.x[SYSTEM].is_some(){vec![SYSTEM,BATTERY]}
                 else{vec![slot]};
             let left=slots.iter().filter_map(|&i|original[i].map(|x|x-self.widths[i]/2.0)).fold(f32::INFINITY,f32::min);
             let right=slots.iter().filter_map(|&i|original[i].map(|x|x+self.widths[i]/2.0)).fold(f32::NEG_INFINITY,f32::max);
@@ -119,7 +134,7 @@ pub(crate) struct Motion {
     initialized: bool,
 }
 impl Default for Motion {
-    fn default()->Self {Self {target:Layout::new(false,0,false,false,false,false,false),positions:vec![Spring::new(0.0,360.0,0.76);10],initialized:false}}
+    fn default()->Self {Self {target:Layout::new(false,0,false,false,false,false,false),positions:vec![Spring::new(0.0,360.0,0.76);11],initialized:false}}
 }
 impl Motion {
     pub fn step(&mut self,target:Layout,dt:f32,animate:bool) {
@@ -215,6 +230,24 @@ mod tests {
                 assert!(boxes.last().unwrap().1<=layout.width/2.0-15.9);
                 assert!(layout.clearance(WEATHER)>0.99,"天气与额度环不应对撞：{layout:?}");
             }}
+        }
+    }
+    #[test]
+    fn system_chip_sits_left_of_the_battery_in_every_order_without_overlaps(){
+        for order in [DEFAULT_ORDER,[FOCUS,MUSIC,QUOTA,CLOCK,PET,BATTERY],[QUOTA,BATTERY,MUSIC,CLOCK,PET,FOCUS]] {
+            for quotas in 0..=4 {for battery in [false,true] {for weather in [false,true] {
+                let base=Layout::new(battery,quotas,true,true,false,true,weather);
+                let mut layout=base.clone();layout.add_system();
+                assert!((layout.width-base.width.max(0.0)-(SYSTEM_WIDTH+12.0)).abs()<0.01 || base.width<=96.0);
+                layout.reorder(&order);
+                let system=layout.x[SYSTEM].unwrap();
+                if let Some(b)=layout.x[BATTERY] {assert!((b-system-(SYSTEM_WIDTH+20.0)/2.0-12.0).abs()<0.01,"电量紧跟在 CPU/RAM 右侧：{layout:?}");}
+                let mut boxes:Vec<_>=layout.x.iter().enumerate().filter_map(|(i,x)|x.map(|x|(x-layout.widths[i]/2.0,x+layout.widths[i]/2.0))).collect();
+                boxes.sort_by(|a,b|a.0.total_cmp(&b.0));
+                assert!(boxes.windows(2).all(|p|p[1].0-p[0].1>=6.9),"组件不能重叠：{layout:?}");
+                assert!(boxes.first().unwrap().0>=-layout.width/2.0+15.9);
+                assert!(boxes.last().unwrap().1<=layout.width/2.0-15.9);
+            }}}
         }
     }
     #[test]

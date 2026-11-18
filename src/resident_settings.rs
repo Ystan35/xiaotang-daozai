@@ -1,8 +1,9 @@
 use crate::{bar_layout::*,paint::{self,Card,H},theme::{self,W}};
 use eframe::egui::{self,Color32,RichText,Rect,Pos2,Vec2};
 
-pub(crate) fn preview_layout(order:&[usize],quotas:usize,weather:bool)->Layout {
+pub(crate) fn preview_layout(order:&[usize],quotas:usize,weather:bool,system:bool)->Layout {
     let mut layout=Layout::new(true,quotas.max(1),true,true,false,true,weather);
+    if system {layout.add_system();}
     layout.reorder(order);layout
 }
 
@@ -19,7 +20,8 @@ impl crate::app::App {
         ui.add_space(12.0);
         let indices=self.quota_bar_indices();let count=indices.len();
         let weather_snapshot=self.weather_pill().cloned();
-        let mut layout=preview_layout(&order,count,weather_snapshot.is_some());
+        let system=self.settings.show_system_stats&&self.sysstats.ready();
+        let mut layout=preview_layout(&order,count,weather_snapshot.is_some(),system);
         for (position,extra) in self.quota_balance_layout(ui.ctx()){layout.balance_tail(position,extra);}
         if self.settings.clock_period!=0 { layout.widen_clock(40.0); }
         if let Some(extra)=self.weather_pill_extra(ui.ctx()){layout.widen(WEATHER,extra);}
@@ -58,7 +60,8 @@ impl crate::app::App {
             }};
             let left=if slot==QUOTA{cx+layout.quota_slots().filter_map(|i|layout.x[i].map(|x|x-layout.widths[i]/2.0)).fold(f32::INFINITY,f32::min)}else{x-width/2.0};
             // 天气与时钟成组，拖拽热区一并盖住，拖时钟会带着天气走。
-            let (left,width)=if slot==CLOCK&&layout.x[WEATHER].is_some(){(left,width+12.0+layout.widths[WEATHER])}else{(left,width)};
+            let (left,width)=if slot==CLOCK&&layout.x[WEATHER].is_some(){(left,width+12.0+layout.widths[WEATHER])}
+                else if slot==BATTERY&&layout.x[SYSTEM].is_some(){(left-12.0-layout.widths[SYSTEM],width+12.0+layout.widths[SYSTEM])}else{(left,width)};
             let rect=card.rect(left-5.0,1.0,width+10.0,28.0);
             let response=ui.interact(rect,ui.id().with(("resident-icon",slot)),egui::Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Grab);
             response.dnd_set_drag_payload(slot);
@@ -72,7 +75,10 @@ impl crate::app::App {
             let active=match slot{BATTERY=>self.settings.show_battery&&self.resident_power.0.is_some(),PET=>self.settings.pet,QUOTA=>count>0,MUSIC=>self.media.is_music(),FOCUS=>self.pomo.running,_=>true};
             let c=card.shifted(dx,0.0).faded(if active||is_dragged{1.0}else{0.38}).ghost();
             match slot{
-                BATTERY=>paint::battery(&c,x,15.0,self.resident_power.0,self.resident_power.1,1.0),
+                BATTERY=>{
+                    paint::battery(&c,x,15.0,self.resident_power.0,self.resident_power.1,1.0);
+                    if let Some(sx)=layout.x[SYSTEM] {self.paint_pill_system(&card.shifted(dx,0.0).ghost(),cx+sx,&layout);}
+                },
                 CLOCK=>{
                     let text=self.settings.clock_text(&chrono::Local::now().format("%H:%M:%S").to_string());
                     paint::clock(&c,x-paint::clock_width(&c,&text,theme::size::PILL_CLOCK)/2.0,21.0,&text,theme::size::PILL_CLOCK);

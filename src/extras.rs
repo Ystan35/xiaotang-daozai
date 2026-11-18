@@ -1348,6 +1348,8 @@ impl App {
                         settings_card(ui,|ui|{
                             setting_row(ui,"Battery","Battery level, charging and alerts; hidden on PCs without a battery",&mut self.settings.show_battery);
                             ui.separator();
+                            setting_row(ui,"CPU and memory","Live CPU and RAM use next to the battery; click it to open Task Manager",&mut self.settings.show_system_stats);
+                            ui.separator();
                             setting_row(ui,"Lyrics on island","Show lyrics when collapsed; cover and title when there are none",&mut self.settings.island_lyrics);
                         });
                         settings_label(ui,"Feature pages");
