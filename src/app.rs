@@ -37,6 +37,8 @@ pub const MAIL_PAGE: usize = 5;
 pub const QUOTA_PAGE: usize = 6;
 pub const CALENDAR_PAGE: usize = 7;
 pub const WEATHER_PAGE: usize = 8;
+pub const ASK_PAGE: usize = 9;
+pub(crate) const ASK_H: f32 = 238.0;
 pub(crate) const WEATHER_H: f32 = 232.0;
 pub(crate) const CALENDAR_H: f32 = 216.0;
 pub const BAR_W: f32 = 163.0; // 收起药丸宽
@@ -65,9 +67,9 @@ fn pill_shadow(painter:&egui::Painter,rect:Rect,radius:f32,strength:f32){
     }
 }
 /// Short names for the page strip under the card.
-pub(crate) const NAV_SHORT: [&str; 9] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI", "Calendar", "Weather"];
-pub(crate) const PAGE_NAMES: [&str; 9] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI quota", "Calendar", "Weather"];
-pub(crate) const PAGE_SETTINGS_TABS: [usize; 9] = [1,2,3,5,4,7,11,8,12];
+pub(crate) const NAV_SHORT: [&str; 10] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI", "Calendar", "Weather", "Ask"];
+pub(crate) const PAGE_NAMES: [&str; 10] = ["Music", "Focus", "Health", "Shelf", "To-do", "Mail", "AI quota", "Calendar", "Weather", "Ask"];
+pub(crate) const PAGE_SETTINGS_TABS: [usize; 10] = [1,2,3,5,4,7,11,8,12,13];
 
 // ---------- 动效参数 ----------
 /// 悬停意图缓冲：光标停留这么久才真正展开（期间药丸轻微胀大作为反馈），防误触。
@@ -659,7 +661,7 @@ pub struct App {
     page_dir: f32,
     page_t0: f64,
     slide: Spring,
-    dots: [Spring; 9],
+    dots: [Spring; 10],
     wheel_delta: f32,
     wheel_at: f64,
     wheel_page_at: f64,
@@ -815,6 +817,7 @@ pub struct App {
     pub(crate) claude_tracker_checked: f64,
     /// 天气页的当前数据与后台拉取状态。
     pub(crate) weather: crate::weather::State,
+    pub(crate) ask: crate::ask_ui::AskState,
     pub(crate) updates: crate::updates::State,
     pub(crate) resident: bar::Motion,
     pub(crate) resident_power: (Option<u8>,bool),
@@ -840,6 +843,7 @@ impl App {
         let initial_lyrics=settings.lyrics_enabled;
         let initial_page=settings.page_order.iter().copied().find(|page|settings.visible_pages[*page]).unwrap_or(0);
         let weather=crate::weather::State::load(&settings.weather_city,settings.weather_position.as_ref());
+        let ask=crate::ask_ui::AskState::load(settings.ask_keep_days);
         Self {
             opts,
             render_compat_running: settings.render_compat,
@@ -948,6 +952,7 @@ impl App {
             quota: crate::quota_ui::State::load(),
             claude_tracker: crate::claude_tracker::Tracker::load(), claude_tracker_checked: f64::NEG_INFINITY,
             weather,
+            ask,
             updates: Default::default(),
             resident: Default::default(), resident_power:(None,false), auto_theme_checked: f64::NEG_INFINITY,
         }
@@ -1575,12 +1580,12 @@ impl App {
     }
 
     pub fn is_editing(&self) -> bool {
-        self.adding || self.editing.is_some() || self.todo_choosing || self.task_dialog.is_some() || self.calendar.draft.is_some() || self.focus_editing
+        self.adding || self.editing.is_some() || self.ask.focused || self.todo_choosing || self.task_dialog.is_some() || self.calendar.draft.is_some() || self.focus_editing
     }
 
     pub fn filter_todo_input(&mut self,input:&mut egui::RawInput) {
         self.todo_ime_frame=false;
-        if !self.adding && self.editing.is_none(){self.todo_ime_active=false;return;}
+        if !self.adding && self.editing.is_none() && !self.ask.focused {self.todo_ime_active=false;return;}
         self.todo_ime_frame=self.todo_ime_active || input.events.iter().any(|event|matches!(event,egui::Event::Ime(egui::ImeEvent::Enabled|egui::ImeEvent::Preedit(_)|egui::ImeEvent::Commit(_))));
         for event in &input.events {
             match event {
@@ -1744,7 +1749,7 @@ impl App {
     }
 
     pub(crate) fn expanded_height(&self)->f32 {
-        if self.page==CALENDAR_PAGE {CALENDAR_H}else if self.page==WEATHER_PAGE {WEATHER_H}else if self.page==6{176.0}else if self.page==5&&self.mail.open_uid.is_some(){236.0}else{PH}
+        if self.page==CALENDAR_PAGE {CALENDAR_H}else if self.page==WEATHER_PAGE {WEATHER_H}else if self.page==ASK_PAGE {ASK_H}else if self.page==6{176.0}else if self.page==5&&self.mail.open_uid.is_some(){236.0}else{PH}
     }
 
     // ---------------------------------------------------------------
@@ -1761,6 +1766,7 @@ impl App {
         self.t = env.t;
         self.quota_tick();
         self.weather_tick();
+        self.ask_tick();
         self.current_hour=env.hour();
         self.system_idle=env.idle_seconds;
         self.dt = dt;
@@ -1874,7 +1880,7 @@ impl App {
         if self.key_open && self.t-self.key_open_at>0.6 && !ctx.input(|i|i.focused) {self.close_keyboard_open();}
         if (!self.is_editing() || self.todo_choosing) && (inside || self.key_open) && self.open && self.reveal > 0.95 {
             let (scroll, scroll_x, left, right, esc) = ctx.input(|i| (if inside {i.raw_scroll_delta.y}else{0.0}, if inside {i.raw_scroll_delta.x}else{0.0}, i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight), i.key_pressed(egui::Key::Escape)));
-            const NUMBER_KEYS:[egui::Key;9]=[egui::Key::Num1,egui::Key::Num2,egui::Key::Num3,egui::Key::Num4,egui::Key::Num5,egui::Key::Num6,egui::Key::Num7,egui::Key::Num8,egui::Key::Num9];
+            const NUMBER_KEYS:[egui::Key;10]=[egui::Key::Num1,egui::Key::Num2,egui::Key::Num3,egui::Key::Num4,egui::Key::Num5,egui::Key::Num6,egui::Key::Num7,egui::Key::Num8,egui::Key::Num9,egui::Key::Num0];
             let (number,home,end)=ctx.input(|i|(NUMBER_KEYS.iter().position(|key|i.key_pressed(*key)),i.key_pressed(egui::Key::Home),i.key_pressed(egui::Key::End)));
             if esc { if self.key_open {self.close_keyboard_open();} self.hover_lock = true; }
             let sequence=self.page_sequence();
@@ -1901,7 +1907,8 @@ impl App {
                 let mail_list=self.page==5 && !self.mail.accounts.is_empty() && self.mail.open_uid.is_none() && self.mail_list_bounds().contains(cursor);
                 let music_volume=self.page==0 && (Rect::from_min_max(Pos2::new(354.0,106.0),Pos2::new(380.0,130.0)).contains(cursor)
                     || self.music_volume_open && crate::pages::MUSIC_VOLUME_RECT.contains(cursor));
-                if mail_reading || mail_list || music_volume {self.wheel_delta=0.0;}
+                let ask_body=self.page==ASK_PAGE && App::ask_body_rect().contains(cursor);
+                if mail_reading || mail_list || music_volume || ask_body {self.wheel_delta=0.0;}
                 else {
                     // 累积高精度滚轮的小幅输入；停顿或反向时丢弃上一段余量。
                     if self.t-self.wheel_at>0.18 || self.wheel_delta*scroll<0.0 {self.wheel_delta=0.0;}
@@ -2915,6 +2922,7 @@ impl App {
             6 => ("AI", "Quota", theme::SOFT_GREEN),
             8 if self.weather.solar_open => ("Daylight", "", theme::YELLOW),
             8 => ("Weather", "", theme::CYAN),
+            ASK_PAGE => ("Ask", "Gemini", theme::BLUE),
             _ => ("Daozai", "Settings", theme::WHITE),
         };
         let wa = c.text(15.0, base, a, size::TITLE, W::Bold, theme::WHITE, H::Left);
@@ -2926,7 +2934,7 @@ impl App {
     fn nav(&mut self, c: &Card) {
         let pages=self.page_sequence();
         if pages.len()<2 { return; }
-        let arrow_y=if self.page==6||self.page==8{88.0}else{68.0};
+        let arrow_y=if self.page==6||self.page==8||self.page==ASK_PAGE{88.0}else{68.0};
         let l = c.hit(8.0, arrow_y-13.0, 26.0, 26.0, "nav-l")
             .on_hover_text("Previous page · ← key, swipe or Shift+wheel");
         let r = c.hit(385.0, arrow_y-13.0, 26.0, 26.0, "nav-r")
@@ -3003,6 +3011,7 @@ impl App {
             5 => self.page_mail(c, env, cmds),
             6 => self.page_quota(c),
             8 => self.page_weather(c,env,cmds),
+            ASK_PAGE => self.page_ask(c,cmds),
             CALENDAR_PAGE => self.page_calendar(c,env),
             _ => self.page_settings(c),
         }

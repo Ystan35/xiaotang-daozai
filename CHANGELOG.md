@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- New Ask page: type a quick question on the island and Gemini answers in a few lines, with follow-ups in the same conversation, a Copy button and New chat. Add a free Google AI Studio key in Settings > Ask; it is stored in Windows Credential Manager, not in the settings file. Choose Flash or Flash-Lite. History is kept for 1, 3 (default) or 7 days and then deleted automatically, or turned off; Clear history removes it at once. Press 0 (or Ctrl+Alt+D, then 0) to jump there.
 - Easier page navigation: swipe left/right on a trackpad, use Shift+wheel or tilt the wheel, or drag the card sideways to turn one page; the vertical wheel keeps scrolling lists. Hover the dots under the card to see every page by name and click one to jump there. Keys 1–9 jump to that page, Home/End to the first/last, ←/→ step. Ctrl+Alt+D opens the island from anywhere for keyboard use (Esc or Ctrl+Alt+D again closes it).
 - The interface is now in English.
 - 剪贴板的文字和图片都可以直接拖到其他程序：文字放下即粘贴，图片以文件放下（聊天窗口、文件夹、文档均可）。

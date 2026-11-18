@@ -1088,7 +1088,7 @@ pub(crate) fn settings_card(ui:&mut egui::Ui,add:impl FnOnce(&mut egui::Ui)) {
 /// 设置分页对应的功能模块（页面序号）；常规、通知、关于、页面管理不属于任何模块。
 pub(crate) fn settings_tab_module(tab:usize)->Option<usize>{
     use crate::app::*;
-    match tab {1=>Some(MUSIC_PAGE),2=>Some(FOCUS_PAGE),3=>Some(WATER_PAGE),4=>Some(TODO_PAGE),5=>Some(SHELF_PAGE),7=>Some(MAIL_PAGE),8=>Some(CALENDAR_PAGE),11=>Some(QUOTA_PAGE),12=>Some(WEATHER_PAGE),_=>None}
+    match tab {1=>Some(MUSIC_PAGE),2=>Some(FOCUS_PAGE),3=>Some(WATER_PAGE),4=>Some(TODO_PAGE),5=>Some(SHELF_PAGE),7=>Some(MAIL_PAGE),8=>Some(CALENDAR_PAGE),11=>Some(QUOTA_PAGE),12=>Some(WEATHER_PAGE),13=>Some(ASK_PAGE),_=>None}
 }
 
 pub(crate) fn settings_label(ui:&mut egui::Ui,text:&str){
@@ -1214,9 +1214,9 @@ fn setting_choices(ui:&mut egui::Ui,title:&str,value:&mut u32,values:[u32;3],uni
     let options:Vec<(u32,&str)>=values.iter().zip(labels.iter()).map(|(v,l)|(*v,l.as_str())).collect();
     settings_control_row_right(ui,title,|ui|{settings_segmented(ui,value,&options,62.0);});
 }
-const SETTINGS_GROUPS: [(&str,usize,usize);9] = [
+const SETTINGS_GROUPS: [(&str,usize,usize);10] = [
     ("General",0,0), ("Pages",10,10), ("Music & lyrics",1,1), ("Focus & water",2,3),
-    ("To-do & shelf",4,5), ("Notifications, mail & calendar",6,8), ("AI quota",11,11), ("Weather",12,12), ("About",9,9),
+    ("To-do & shelf",4,5), ("Notifications, mail & calendar",6,8), ("AI quota",11,11), ("Weather",12,12), ("Ask",13,13), ("About",9,9),
 ];
 
 impl App {
@@ -1269,6 +1269,7 @@ impl App {
                         4=>egui::include_image!("../assets/settings-icons/system/tasks.svg"),
                         6=>egui::include_image!("../assets/settings-icons/system/notifications.svg"),
                         12=>egui::include_image!("../assets/settings-icons/system/weather.svg"),
+                        13=>egui::include_image!("../assets/settings-icons/system/ask.svg"),
                         _=>egui::include_image!("../assets/settings-icons/system/about.svg"),
                     };
                     let icon_bg=egui::Rect::from_center_size(egui::pos2(rect.left()+21.0,rect.center().y),egui::vec2(25.0,25.0));
@@ -1299,8 +1300,8 @@ impl App {
                     }
                 }
                 ui.visuals_mut().selection.bg_fill=settings_color(ctx,Color32::from_rgb(45,105,165),Color32::from_rgb(209,226,248));
-                let titles=["General","Music & lyrics","Focus","Health reminders","To-do","Shelf","Notifications","Mail","Calendar","About","Pages","AI quota","Weather"];
-                ui.label(egui::RichText::new(titles[self.settings_tab.min(12)]).size(18.0).strong().color(settings_color(ctx,Color32::WHITE,Color32::from_rgb(30,34,41))));
+                let titles=["General","Music & lyrics","Focus","Health reminders","To-do","Shelf","Notifications","Mail","Calendar","About","Pages","AI quota","Weather","Ask"];
+                ui.label(egui::RichText::new(titles[self.settings_tab.min(13)]).size(18.0).strong().color(settings_color(ctx,Color32::WHITE,Color32::from_rgb(30,34,41))));
                 if let Some((_,start,end))=SETTINGS_GROUPS.iter().find(|(_,start,end)|(*start..=*end).contains(&self.settings_tab)) {
                     if start!=end {
                         ui.add_space(7.0);
@@ -1337,6 +1338,7 @@ impl App {
                     }
                     match self.settings_tab {
                     12=>self.weather_settings(ui),
+                    13=>self.ask_settings(ui),
                     11=>self.quota_settings(ui),
                     10=>{
                         ui.label(egui::RichText::new("Choose the pages and status items you want.").size(12.0).color(settings_color(ctx,Color32::from_gray(180),Color32::from_gray(75))));
@@ -1350,7 +1352,7 @@ impl App {
                         });
                         settings_label(ui,"Feature pages");
                         settings_card(ui,|ui|{
-                            let descriptions=["Playback controls and synced lyrics","Pomodoro and break timer","Water and stand-up reminders","Keep file locations handy","Task list and due reminders","Mail summaries and codes","Agent quota and account switching","Month view, mail invites and work calendars","Local weather and 7-day forecast"];
+                            let descriptions=["Playback controls and synced lyrics","Pomodoro and break timer","Water and stand-up reminders","Keep file locations handy","Task list and due reminders","Mail summaries and codes","Agent quota and account switching","Month view, mail invites and work calendars","Local weather and 7-day forecast","Quick questions answered by Gemini"];
                             ui.label(egui::RichText::new("Drag the handle to reorder. Features that are off don't run, sync or remind; their data is kept.").size(11.5).color(settings_color(ctx,Color32::from_gray(180),Color32::from_gray(75))));
                             #[derive(Clone)]
                             struct PageDrag(usize);
