@@ -604,7 +604,7 @@ mod tests {
             assert_eq!(items.len(), 7, "6 项 + 1 分隔线");
             assert!(items[3].2, "第 4 项是分隔线");
             let texts: Vec<_> = items.iter().filter(|i| !i.2).map(|i| i.0.as_str()).collect();
-            assert_eq!(texts, ["开机启动", "吉祥物", "极简刘海", "设置…", "关于岛仔", "退出"]);
+            assert_eq!(texts, ["Start with Windows", "Mascot", "Minimal notch", "Settings…", "About Daozai", "Quit"]);
             assert_eq!([items[0].1, items[1].1, items[2].1], want, "勾选态应与状态一致");
             unsafe {
                 let _ = DestroyMenu(menu);
@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn labels_are_fixed_chinese() {
-        assert_eq!(labels(), ["开机启动", "吉祥物", "极简刘海", "关于岛仔", "退出", "设置…"]);
+        assert_eq!(labels(), ["Start with Windows", "Mascot", "Minimal notch", "About Daozai", "Quit", "Settings…"]);
     }
 
     #[test]

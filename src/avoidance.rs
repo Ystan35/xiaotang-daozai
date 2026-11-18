@@ -158,9 +158,9 @@ mod tests {
     fn picker_disables_duplicates_and_browser_rules_only_when_enabled() {
         let app=Candidate{path:r"D:\Quark\quark.exe".into(),name:"夸克".into(),title:"新标签页".into(),browser:true};
         let mut settings=Settings::default();
-        assert_eq!(Picker::reason(&app,&settings),Some("浏览器规则已覆盖"));
+        assert_eq!(Picker::reason(&app,&settings),Some("Covered by the browser rule"));
         settings.avoid_browsers=false;assert_eq!(Picker::reason(&app,&settings),None);
         settings.avoid_apps.push((app.path.to_uppercase(),app.name.clone()));
-        assert_eq!(Picker::reason(&app,&settings),Some("已添加"));
+        assert_eq!(Picker::reason(&app,&settings),Some("Added"));
     }
 }

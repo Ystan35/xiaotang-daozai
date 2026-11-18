@@ -394,19 +394,19 @@ pub fn open_wechat_from_tray(unread:crate::app::Unread)->Result<(),String>{
             }
             return confirmed(account.pid,&mut log);
         };
-        let Some(icon)=tray_rect(host,id) else {return Err(log.fail("T1","系统未报告托盘图标位置"));};
+        let Some(icon)=tray_rect(host,id) else {return Err(log.fail("T1","Windows didn't report the tray icon position"));};
         log.step(format!("图标位置：{}",show_rect(icon)));
         let was_open=overflow_open().is_some();
         if let Some(overflow)=overflow_open(){
             if let Some(button)=button_at(overflow,icon,&mut log){
-                if !still_over_icon(&button,host,id) || !invoke(&button){return Err(log.fail("T5","折叠区图标已变化，请重试"));}
+                if !still_over_icon(&button,host,id) || !invoke(&button){return Err(log.fail("T5","Overflow icons changed; try again"));}
                 return confirmed(account.pid,&mut log);
             }
         }
         let chevron:IUIAutomationElement;
         let from_chevron:bool;
         if let Some(button)=button_on_shell(taskbar,icon,&mut log) {
-            if !still_over_icon(&button,host,id) || !invoke(&button){return Err(log.fail("T5","任务栏按钮已变化或无法按下"));}
+            if !still_over_icon(&button,host,id) || !invoke(&button){return Err(log.fail("T5","Taskbar button changed or can't be pressed"));}
             std::thread::sleep(Duration::from_millis(250));
             // 按下后折叠区展开了：说明图标收在折叠区，命中的是「显示隐藏的图标」（新版 Win11 会报告这个位置）。
             if overflow_open().is_none() {return confirmed(account.pid,&mut log);}
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn tray_button_names_identify_wechat_only(){
         for name in ["微信","微信 - 2 条新消息","WeChat","Weixin\n有新消息"] {assert!(wechat_tray_name(name),"{name}");}
-        for name in ["微信输入法","任务栏输入指示 单击右键查看微信输入法设置","企业微信","QQ: 12345",""] {assert!(!wechat_tray_name(name),"{name}");}
+        for name in ["微信输入法","任务栏输入指示 单击右键查看微信输入法设置","WeCom","QQ: 12345",""] {assert!(!wechat_tray_name(name),"{name}");}
     }
     #[test]
     fn dual_open_flashes_map_to_their_own_tray(){

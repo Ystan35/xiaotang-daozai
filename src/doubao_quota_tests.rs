@@ -23,9 +23,9 @@ fn parses_five_hour_week_and_bonus_windows() {
     let snapshot = parse(&response()).unwrap();
     assert_eq!(snapshot.plan, "Pro");
     assert_eq!(snapshot.rings().len(), 2);
-    assert_eq!(snapshot.rings()[0].label, "5 小时");
+    assert_eq!(snapshot.rings()[0].label, "5 hours");
     assert_eq!(snapshot.rings()[0].remaining, 72.0);
-    assert_eq!(snapshot.rings()[1].label, "本周");
+    assert_eq!(snapshot.rings()[1].label, "This week");
     assert_eq!(snapshot.rings()[1].remaining, 44.0);
     assert_eq!(snapshot.rings()[0].reset, Some(1900008000));
     assert_eq!(snapshot.extra[0].remaining, 75.0);
@@ -68,19 +68,19 @@ fn amount_fallback_and_zero_timestamps_stay_honest() {
 #[test]
 fn groups_keep_both_cycles_and_every_extra_pool() {
     let value = json!({"data":{"window_limit_section":{"window_limit_groups":[
-        {"feature_group_name":"图片","window_limits":[{"window_type":1,"used_percent":10},{"window_type":2,"used_percent":20}]},
+        {"feature_group_name":"Images","window_limits":[{"window_type":1,"used_percent":10},{"window_type":2,"used_percent":20}]},
         {"feature_group_name":"任务","window_limits":[{"window_type":1,"used_percent":80},{"window_type":2,"used_percent":70}]}
     ]},"incentive_quota_section":{"window_limit_groups":[{"window_limits":[{"window_type":1,"used_percent":5}]}]}}});
     let snapshot = parse(&value).unwrap();
     assert_eq!(snapshot.rings().iter().map(|window|window.seconds).collect::<Vec<_>>(), vec![Some(18000),Some(604800)]);
-    assert_eq!(snapshot.windows[0].label, "任务 · 5 小时");
+    assert_eq!(snapshot.windows[0].label, "任务 · 5 hours");
     assert_eq!(snapshot.windows[0].remaining, 20.0);
     assert_eq!(snapshot.extra.len(), 3);
-    assert!(snapshot.extra.iter().any(|window|window.label=="活动 · 5 小时"));
+    assert!(snapshot.extra.iter().any(|window|window.label=="Event · 5 hours"));
     assert_eq!(snapshot.windows.len()+snapshot.extra.len(), 5);
     let mut single=one_limit(json!({"window_type":1,"used_percent":30}));
     single["data"]["window_limit_section"]["window_limit_groups"][0]["feature_group_name"]=json!("图片生成");
-    assert_eq!(parse(&single).unwrap().windows[0].label,"图片生成 · 5 小时","只有一个权益池也必须保留适用范围");
+    assert_eq!(parse(&single).unwrap().windows[0].label,"图片生成 · 5 hours","只有一个权益池也必须保留适用范围");
 }
 
 #[test]
@@ -89,10 +89,10 @@ fn activity_only_and_empty_plan_names_are_supported() {
         "incentive_quota_section":{"window_limit_groups":[{"window_limits":[{"window_type":3,"used_percent":30}]}]}}});
     let snapshot = parse(&value).unwrap();
     assert_eq!(snapshot.plan, "Plus");
-    assert_eq!(snapshot.rings()[0].label, "活动额度");
+    assert_eq!(snapshot.rings()[0].label, "Event quota");
     assert_eq!(snapshot.rings()[0].remaining, 70.0);
     let unclassified = parse(&one_limit(json!({"window_type":3,"used_percent":30,"end_time":1900000000000i64}))).unwrap();
-    assert_eq!(unclassified.windows[0].label,"其他额度","未知窗口不能仅按数字推断为活动或月额度");
+    assert_eq!(unclassified.windows[0].label,"Other quota","未知窗口不能仅按数字推断为活动或月额度");
     assert_eq!(unclassified.windows[0].reset,None);
 }
 
@@ -252,5 +252,5 @@ fn dropping_a_connection_cancels_it_and_busy_validation_does_not_spawn_more_work
     let (connection,cancel) = Connect::pending_test();drop(connection);assert!(cancel.load(Ordering::Acquire));
     assert!(!CONNECTING.swap(true,Ordering::AcqRel));let _guard=ConnectionSlot;
     let connection = Connect::start(String::new(),LoginSource::Cookie(header('a',None)),None);
-    assert!(connection.poll().unwrap().err().unwrap().contains("上次"));
+    assert!(connection.poll().unwrap().err().unwrap().contains("last"));
 }

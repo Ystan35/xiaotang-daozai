@@ -2,7 +2,7 @@ use super::*;
 
 fn fixture(h: &mut H) {
     use crate::quota::{Account, Provider};
-    let account = Account { id:"doubao-preview".into(),provider:Provider::Doubao,alias:"豆包".into(),
+    let account = Account { id:"doubao-preview".into(),provider:Provider::Doubao,alias:"Doubao".into(),
         source:Default::default(),slot:Some("0".repeat(64)),enabled:true,pinned:true };
     h.app.quota.config.accounts=vec![account.clone()];h.app.quota.config.selected=account.id.clone();
     let snapshot=crate::quota::parse(Provider::Doubao,&serde_json::json!({"code":0,"data":{
@@ -31,10 +31,10 @@ fn has_text(h: &H, expected: &str) -> bool {
 fn doubao_activity_is_visible_on_the_island_and_in_account_details() {
     let _guard=ENV_LOCK.lock().unwrap_or_else(|error|error.into_inner());let mut h=H::new();fixture(&mut h);
     h.app.show_page(6);h.hover(H::local(260.0,60.0),1.0);
-    for label in ["5 小时","本周","活动额度","75%"] { assert!(has_text(&h,label),"额度面板缺少 {label}"); }
+    for label in ["5 hours","This week","Event quota","75%"] { assert!(has_text(&h,label),"额度面板缺少 {label}"); }
     for _ in 0..5 { settings_frame(&mut h,vec![]); }
-    assert!(has_text(&h,"活动额度：剩余 75.0%"),"账号明细应保留活动额度");
-    assert!(has_text(&h,"5 小时：剩余 72.0%") && has_text(&h,"本周：剩余 44.0%"));
+    assert!(has_text(&h,"Event quota: 75.0% left"),"账号明细应保留活动额度");
+    assert!(has_text(&h,"5 hours: 72.0% left") && has_text(&h,"This week: 44.0% left"));
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn doubao_connection_offers_official_login_without_an_extension() {
     let _guard=ENV_LOCK.lock().unwrap_or_else(|error|error.into_inner());let mut h=H::new();
     h.app.open_settings();h.app.quota.provider=crate::quota::Provider::Doubao;h.app.quota.connect_open=true;
     for _ in 0..5 { settings_frame(&mut h,vec![]); }
-    for label in ["添加账号","浏览器登录","从本机导入","使用 Cookie 连接"] { assert!(has_text(&h,label),"连接窗口缺少 {label}"); }
+    for label in ["Add account","Browser sign-in","Import from this PC","Connect with Cookie"] { assert!(has_text(&h,label),"连接窗口缺少 {label}"); }
     assert!(!has_text(&h,"Kimi"),"豆包登录不能依赖浏览器扩展");
     assert!(!has_text(&h,"登录 JSON"),"豆包不应走登录文件导入");
 }

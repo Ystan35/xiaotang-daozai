@@ -91,7 +91,7 @@ pub fn parse(value: &Value) -> Result<Snapshot, String> {
     let plan = ["/current_subscription/display/short_name", "/current_subscription/display/product_name"]
         .into_iter().find_map(|path| data.pointer(path).and_then(Value::as_str).map(str::trim).filter(|name| !name.is_empty()))
         .unwrap_or_default();
-    let plan = plan.strip_prefix("Doubao").map(str::trim).unwrap_or(plan).to_owned();
+    let plan = plan.strip_prefix("豆包").map(str::trim).unwrap_or(plan).to_owned();
     Ok(Snapshot { plan, windows: primary, extra, at: chrono::Utc::now().timestamp(), ..Default::default() })
 }
 
@@ -205,7 +205,7 @@ impl Validated {
             let account = candidate.accounts.iter_mut().find(|account| account.id == old.id).unwrap();
             account.slot = Some(slot.clone()); account.alias = label; account.enabled = true; old.id.clone()
         } else {
-            let id = format!("Doubao-{slot}"); let pinned = candidate.pinned_indices().len() < 3;
+            let id = format!("豆包-{slot}"); let pinned = candidate.pinned_indices().len() < 3;
             candidate.accounts.push(Account { id: id.clone(), provider: Provider::Doubao, alias: label,
                 source: PathBuf::new(), slot: Some(slot.clone()), enabled: true, pinned }); id
         };

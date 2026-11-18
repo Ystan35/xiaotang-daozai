@@ -707,28 +707,28 @@ mod tests {
     fn network_connection_uses_connected_wording() {
         let old=Snapshot{volume:None,audio_endpoint:None,caps:false,network:false,network_kind:NetworkKind::Other};
         let mut connected=old.clone();connected.network=true;
-        assert_eq!(connected.changes(&old),vec![("网络连接".into(),"网络已连接".into())]);
+        assert_eq!(connected.changes(&old),vec![("Network".into(),"Connected".into())]);
     }
     #[test]
     fn network_switches_transport_and_keeps_the_disconnected_type() {
         let wifi=Snapshot{volume:None,audio_endpoint:None,caps:false,network:true,network_kind:NetworkKind::Wifi};
         let mut cable=wifi.clone();cable.network_kind=NetworkKind::Ethernet;
-        assert_eq!(cable.changes(&wifi),vec![("网络连接".into(),"以太网 · 网络已连接".into())]);
+        assert_eq!(cable.changes(&wifi),vec![("Network".into(),"Ethernet · Connected".into())]);
         let mut off=cable.clone();off.network=false;off.network_kind=NetworkKind::Other;
-        assert_eq!(off.changes(&cable),vec![("网络连接".into(),"以太网 · 网络已断开".into())]);
-        assert_eq!(wifi.changes(&off),vec![("网络连接".into(),"Wi-Fi · 网络已连接".into())]);
+        assert_eq!(off.changes(&cable),vec![("Network".into(),"Ethernet · Disconnected".into())]);
+        assert_eq!(wifi.changes(&off),vec![("Network".into(),"Wi-Fi · Connected".into())]);
     }
     #[test]
     fn switching_audio_endpoints_is_not_a_volume_adjustment() {
         let old=Snapshot{volume:Some((20,false)),audio_endpoint:Some("speakers".into()),caps:false,network:true,network_kind:NetworkKind::Other};
         let mut new=old.clone();
         new.audio_endpoint=Some("headphones".into());new.volume=Some((80,false));new.caps=true;
-        assert_eq!(new.changes(&old),vec![("大写锁定".into(),"已开启".into())]);
+        assert_eq!(new.changes(&old),vec![("Caps Lock".into(),"On".into())]);
         let mut adjusted=new.clone();adjusted.volume=Some((60,false));
-        assert_eq!(adjusted.changes(&new),vec![("系统音量".into(),"音量 60%".into())]);
+        assert_eq!(adjusted.changes(&new),vec![("System volume".into(),"音量 60%".into())]);
         adjusted.volume=Some((60,true));
-        assert_eq!(adjusted.changes(&new),vec![("系统音量".into(),"已静音".into())]);
-        assert!(!old.changes(&new).iter().any(|(title,_)|title=="系统音量"));
+        assert_eq!(adjusted.changes(&new),vec![("System volume".into(),"Muted".into())]);
+        assert!(!old.changes(&new).iter().any(|(title,_)|title=="System volume"));
     }
 
     #[test]

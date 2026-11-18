@@ -64,7 +64,7 @@ fn partial_collection_failure_is_visible_for_every_caldav_provider(){
     for provider in [Provider::DingTalk,Provider::Feishu,Provider::ICloud,Provider::Custom]{
         let fetched=mock_fetch(provider,false,true).unwrap();
         assert_eq!(fetched.events.len(),1);assert_eq!(fetched.report.calendars,2);assert_eq!(fetched.report.failed,1);
-        assert!(fetched.report.warning().contains("403"));assert!(fetched.report.warning().contains("读取失败"));
+        assert!(fetched.report.warning().contains("403"));assert!(fetched.report.warning().contains("failed to load"));
     }
 }
 
@@ -90,7 +90,7 @@ fn malformed_recurrence_override_does_not_restore_the_unmodified_series(){
 fn recurrence_limit_preserves_valid_instances_and_explains_truncation(){
     let ics="BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:many\nDTSTART:20261101T000000Z\nRRULE:FREQ=MINUTELY;COUNT=2500\nEND:VEVENT\nEND:VCALENDAR";
     let parsed=inspect_ics(ics,"2026-11-01T00:00:00Z".parse().unwrap(),"2026-12-01T00:00:00Z".parse().unwrap()).unwrap();
-    assert_eq!(parsed.events.len(),2000);assert!(parsed.report.limited);assert!(parsed.report.warning().contains("读取上限"));
+    assert_eq!(parsed.events.len(),2000);assert!(parsed.report.limited);assert!(parsed.report.warning().contains("Read limit"));
 }
 
 #[test]

@@ -228,8 +228,8 @@ mod tests {
     fn taskbar_clients_do_not_duplicate_system_toasts_or_hide_other_apps(){
         assert_eq!(taskbar_client("微信","unknown"),Some(Messenger::Wechat));
         assert_eq!(taskbar_client("unknown","Tencent.WeChat"),Some(Messenger::Wechat));
-        assert_eq!(taskbar_client("企业微信","WeCom"),Some(Messenger::WeCom));
-        assert_eq!(taskbar_client("飞书","com.electron.Feishu"),Some(Messenger::Feishu));
+        assert_eq!(taskbar_client("WeCom","WeCom"),Some(Messenger::WeCom));
+        assert_eq!(taskbar_client("Feishu","com.electron.Feishu"),Some(Messenger::Feishu));
         assert_eq!(taskbar_client("微信","com.electron.Feishu"),Some(Messenger::Feishu));
         assert_eq!(taskbar_client("微信","QQ"),None,"可信应用标识优先于显示名称");
         assert!(NotificationFilter::Only(Messenger::Qq).allows("qq"));
@@ -287,8 +287,8 @@ mod tests {
     }
     #[test]
     fn errors_use_state_instead_of_translated_error_text(){
-        assert_eq!(OpenError::Exited.message(Messenger::Qq),"QQ 账号已退出");
-        assert_eq!(OpenError::Exited.message(Messenger::Wechat),"微信 账号已退出");
+        assert_eq!(OpenError::Exited.message(Messenger::Qq),"QQ account signed out");
+        assert_eq!(OpenError::Exited.message(Messenger::Wechat),"微信 account signed out");
         assert_ne!(OpenError::Failed("账号已退出".into()),OpenError::Exited);
         assert!(!OpenError::Unavailable.message(Messenger::Qq).contains("已退出"));
     }

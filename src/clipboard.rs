@@ -467,7 +467,7 @@ mod tests {
         let mut history = History::load_from(path.clone());
         assert!(history.items[0].pinned);
         history.push("保留", "09:00");
-        history.push("删除", "09:01");
+        history.push("Delete", "09:01");
         history.remove(0);
         let mut reopened = History::load_from(path.clone());
         assert_eq!(reopened.items, history.items);
@@ -485,7 +485,7 @@ mod tests {
         let mut h = History::default();
         assert!(h.push_image(img(1), "09:00"));
         assert!(!h.push_image(img(1), "09:01"), "与最新一张相同不重复记录");
-        assert!(h.push("文字", "09:02"));
+        assert!(h.push("Text", "09:02"));
         h.set_image_text(&img(1).file, "识别结果");
         assert!(h.push("识别结果", "09:03"), "同样的文字与图片条目互不合并");
         assert!(h.push_image(img(1), "09:04"));

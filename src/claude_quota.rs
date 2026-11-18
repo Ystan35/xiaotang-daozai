@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(snapshot.at,at/1000);assert!(snapshot.windows.iter().all(|w|w.reset.is_none()),"历史缓存没有重置时间，不能推算");
         account.slot=Some("another-account".into());assert!(super::super::fetch(&ureq::Agent::new(),&account).is_err(),"本地缓存不能串号");
         fs::remove_file(dir.join("plan-usage-history.json")).unwrap();account.slot=None;
-        assert!(super::super::fetch(&agent,&account).unwrap_err().0.contains("本地"),"没有缓存也不能回退联网");
+        assert!(super::super::fetch(&agent,&account).unwrap_err().0.contains("local"),"没有缓存也不能回退联网");
         assert_eq!(listener.accept().unwrap_err().kind(),std::io::ErrorKind::WouldBlock,"Claude 本地读取不能发起任何代理连接");
         assert_eq!(fs::read_to_string(&source).unwrap(),identity);let _=fs::remove_dir_all(dir);
     }

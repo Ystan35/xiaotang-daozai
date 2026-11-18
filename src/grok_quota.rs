@@ -208,7 +208,7 @@ mod tests {
         let s=parse(&value).unwrap();assert!((s.windows[0].remaining-80.84922).abs()<0.001);assert_eq!(s.windows[0].seconds,Some(604800));assert_eq!(s.windows.len(),1);assert_eq!(s.plan,"Super");
         value["usagePercent"]=json!(0);assert_eq!(parse(&value).unwrap().windows[0].remaining,100.0);
         value["usagePercent"]=json!("100");assert_eq!(parse(&value).unwrap().windows[0].remaining,0.0);
-        value["isUnified"]=json!(true);assert_eq!(parse(&value).unwrap().windows[0].label,"共享周额度");
+        value["isUnified"]=json!(true);assert_eq!(parse(&value).unwrap().windows[0].label,"Shared weekly quota");
     }
     #[test]
     fn missing_or_invalid_readings_are_never_an_unused_allowance(){
@@ -246,7 +246,7 @@ mod tests {
         let personal=token("synthetic-personal");let work=token("synthetic-work");let personal_slot=slot_of(&personal).unwrap();let work_slot=slot_of(&work).unwrap();
         let seal=|text:&str|{let aead=aead::LessSafeKey::new(aead::UnboundKey::new(&aead::AES_256_GCM,&key).unwrap());let nonce=[3u8;12];let mut sealed=text.as_bytes().to_vec();aead.seal_in_place_append_tag(aead::Nonce::assume_unique_for_key(nonce),aead::Aad::empty(),&mut sealed).unwrap();let mut blob=b"v10".to_vec();blob.extend_from_slice(&nonce);blob.extend_from_slice(&sealed);STANDARD.encode(blob)};
         let path=dir.join("sand-secrets.json");let raw=json!({"cursor-accounts":json!({"active":work_slot,"accounts":{&personal_slot:{"cursor-access-token":seal(&personal)},&work_slot:{"cursor-access-token":seal(&work)}}}).to_string()}).to_string();fs::write(&path,&raw).unwrap();
-        let account=Account{id:"synthetic".into(),provider:super::super::Provider::GrokBot,alias:"个人".into(),source:path.clone(),slot:Some(personal_slot),enabled:true,pinned:true};
+        let account=Account{id:"synthetic".into(),provider:super::super::Provider::GrokBot,alias:"Personal".into(),source:path.clone(),slot:Some(personal_slot),enabled:true,pinned:true};
         assert_eq!(native_session(&account).unwrap().token,personal);assert_eq!(fs::read_to_string(&path).unwrap(),raw);
         fs::remove_file(path).unwrap();fs::remove_file(dir.join("Local State")).unwrap();fs::remove_dir(dir).unwrap();
     }
@@ -262,7 +262,7 @@ mod tests {
     fn forbidden_requests_are_not_reported_as_expired_credentials(){
         let response=ureq::Response::new(403,"Forbidden","private-response").unwrap();
         let(message,wait)=http_error(ureq::Error::Status(403,response));
-        assert!(message.contains("403"));assert!(!message.contains("重新连接"));assert!(!message.contains("private-response"));assert!(wait>0);
+        assert!(message.contains("403"));assert!(!message.contains("Reconnect"));assert!(!message.contains("private-response"));assert!(wait>0);
     }
     #[test]
     fn renewal_keeps_the_same_account_and_preserves_or_rotates_its_refresh_token(){
@@ -280,7 +280,7 @@ mod tests {
         let subject=format!("synthetic-daozai-{}-{}",std::process::id(),chrono::Utc::now().timestamp_nanos_opt().unwrap());
         let token=format!("e30.{}.test",URL_SAFE_NO_PAD.encode(json!({"sub":subject}).to_string()));let slot=slot_of(&token).unwrap();let _cleanup=Cleanup(credential(&slot).unwrap());
         let auth=Session{token,refresh:Some("synthetic-refresh".into())};save_session(&slot,&auth).unwrap();let restored=stored_session(&slot).unwrap();assert_eq!(restored.token,auth.token);assert_eq!(restored.refresh,auth.refresh);
-        let account=Account{id:"synthetic".into(),provider:super::super::Provider::GrokBot,alias:"测试".into(),source:PathBuf::new(),slot:Some(slot.clone()),enabled:true,pinned:true};forget(&account);assert!(stored_session(&slot).is_err());
+        let account=Account{id:"synthetic".into(),provider:super::super::Provider::GrokBot,alias:"Test".into(),source:PathBuf::new(),slot:Some(slot.clone()),enabled:true,pinned:true};forget(&account);assert!(stored_session(&slot).is_err());
     }
     #[test]
     fn request_is_a_read_only_rpc_and_errors_never_echo_the_body(){

@@ -66,8 +66,8 @@ impl App {
         if capacity>0{note.push_str(&format!("; reached the 5000 local event limit, {capacity} not imported"));}
         if report.outside>0{note.push_str(&format!("; {} outside the import range (past 30 days to next year)",report.outside));}
         if report.cancelled>0{note.push_str(&format!("; {} cancelled events skipped",report.cancelled));}
-        let warning=report.warning();if !warning.is_empty(){note.push('；');note.push_str(&warning);}
-        if !errors.is_empty(){if !note.is_empty(){note.push('；');}note.push_str(&errors.join("; "));}
+        let warning=report.warning();if !warning.is_empty(){note.push_str("; ");note.push_str(&warning);}
+        if !errors.is_empty(){if !note.is_empty(){note.push_str("; ");}note.push_str(&errors.join("; "));}
         if !cfg!(test){crate::resources::append_log(&crate::model::config_dir().join("diagnostics"),"calendar.log",&format!("{} source=ics files={} received={} imported={added} duplicates={duplicates} capacity={capacity} outside={} invalid={} unsupported={} file_errors={} limited={}",chrono::Utc::now().timestamp(),files.len(),report.received,report.outside,report.invalid,report.unsupported,errors.len(),report.limited));}
         self.calendar.import_note=note.clone();
         note

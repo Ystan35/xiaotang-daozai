@@ -235,7 +235,7 @@ mod tests {
     fn local_state_lists_profiles_in_browser_order_without_other_fields() {
         let raw = serde_json::json!({"profile":{"info_cache":{
             "Profile 10":{"name":"学校","user_name":"school@example.com","gaia_id":"x"},
-            "Default":{"name":"个人","user_name":""},
+            "Default":{"name":"Personal","user_name":""},
             "Profile 2":{"name":"","user_name":"spare@example.com"},
             "Guest Profile":{"name":"访客"},
             "bad\"dir":{"name":"注入"},
@@ -243,10 +243,10 @@ mod tests {
         let profiles = parse_local_state(raw.as_bytes(), Browser::Chrome);
         let dirs: Vec<_> = profiles.iter().map(|p| p.dir.as_str()).collect();
         assert_eq!(dirs, ["Default", "Profile 2", "Profile 10", "Guest Profile"], "非法目录名被跳过");
-        assert_eq!(profiles[0].label, "个人");
+        assert_eq!(profiles[0].label, "Personal");
         assert_eq!(profiles[1].label, "spare@example.com");
-        assert_eq!(profiles[2].label, "学校（school@example.com）");
-        assert_eq!(profiles[2].title(), "Chrome · 学校（school@example.com）");
+        assert_eq!(profiles[2].label, "学校 (school@example.com)");
+        assert_eq!(profiles[2].title(), "Chrome · 学校 (school@example.com)");
         assert!(parse_local_state(b"not json", Browser::Edge).is_empty());
     }
 

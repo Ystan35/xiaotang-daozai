@@ -734,7 +734,7 @@ mod quota_sig_tests {
     use daozai::quota::{Account,Config};
 
     fn account(id:&str)->Account{
-        Account{id:id.into(),provider:daozai::quota::Provider::Claude,alias:"工作".into(),source:"a.json".into(),slot:None,enabled:true,pinned:false}
+        Account{id:id.into(),provider:daozai::quota::Provider::Claude,alias:"Work".into(),source:"a.json".into(),slot:None,enabled:true,pinned:false}
     }
 
     #[test]

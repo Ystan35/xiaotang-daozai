@@ -434,7 +434,7 @@ mod tests {
         assert_eq!(messages,[Unread{source:Messenger::Wechat,pid:100,window:11}]);
         settings.notifications=false;let events=runtime.poll_taskbar(&ctx,&settings);
         assert!(dropped.get());assert_eq!(taken.get(),1,"关闭总开关后不能继续取消息");
-        assert!(events.iter().any(|event|matches!(event,TaskbarEvent::Status(Messenger::Wechat,status) if status.contains("总开关已关闭"))));
+        assert!(events.iter().any(|event|matches!(event,TaskbarEvent::Status(Messenger::Wechat,status) if status.contains("alerts are turned off"))));
         settings.wechat_notifications=false;
         assert!(runtime.poll_taskbar(&ctx,&settings).iter().any(|event|matches!(event,TaskbarEvent::Status(Messenger::Wechat,status) if status.is_empty())));
     }

@@ -226,7 +226,7 @@ impl Window {
     /// 剩余量的书面写法：数值型额度给出“剩余 / 总额”，其余给出百分比。
     pub fn value_text(&self)->String{self.amount.as_ref().map(Amount::full).unwrap_or_else(||format!("{:.0}%",self.remaining))}
     /// 一句话额度摘要，用于小岛提示与设置页。
-    pub fn summary(&self)->String{format!("{} left {}",self.label,self.value_text())}
+    pub fn summary(&self)->String{format!("{} {} left",self.label,self.value_text())}
 }
 #[derive(Clone, Debug, Default)]
 #[derive(serde::Serialize,serde::Deserialize)]

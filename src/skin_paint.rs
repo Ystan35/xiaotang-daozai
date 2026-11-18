@@ -388,8 +388,8 @@ mod tests {
             let layer = egui::LayerId::background();
             let painter = ctx.layer_painter(layer);
             painter.rect_filled(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(60.0, 24.0)), 12.0, Color32::from_rgb(82, 162, 255));
-            painter.text(egui::pos2(30.0, 12.0), egui::Align2::CENTER_CENTER, "保存", egui::FontId::proportional(12.0), Color32::WHITE);
-            painter.text(egui::pos2(120.0, 12.0), egui::Align2::CENTER_CENTER, "取消", egui::FontId::proportional(12.0), Color32::WHITE);
+            painter.text(egui::pos2(30.0, 12.0), egui::Align2::CENTER_CENTER, "Save", egui::FontId::proportional(12.0), Color32::WHITE);
+            painter.text(egui::pos2(120.0, 12.0), egui::Align2::CENTER_CENTER, "Cancel", egui::FontId::proportional(12.0), Color32::WHITE);
             recolor_layer(ctx, layer, &[(0, 3)], &CREAM);
             let shapes: Vec<_> = ctx.graphics_mut(|g| g.entry(layer).all_entries().cloned().collect());
             let first = |s: &Shape| match s { Shape::Text(t) => t.galley.rows.iter().flat_map(|r| r.visuals.mesh.vertices.first()).next().unwrap().color, _ => panic!() };

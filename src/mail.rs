@@ -560,7 +560,7 @@ fn event_of(fields: &[(String, String)]) -> Option<Meeting> {
     let all_day=get("DTSTART").is_some_and(|value|!value.contains('T'));
     let end = parse_time("DTEND").map(|at|at.timestamp()).filter(|end|*end>naive.timestamp())
         .or_else(||all_day.then(||naive.date_naive().succ_opt()?.and_hms_opt(0,0,0)?.and_local_timezone(chrono::Local).earliest().map(|at|at.timestamp())).flatten());
-    let title = get("SUMMARY").map(|v| ics_text(&v)).filter(|t| !t.is_empty()).unwrap_or_else(|| "会议".to_string());
+    let title = get("SUMMARY").map(|v| ics_text(&v)).filter(|t| !t.is_empty()).unwrap_or_else(|| "Meeting".to_string());
     Some(Meeting {
         all_day,
         title,
@@ -1546,8 +1546,8 @@ Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n\
 
     #[test]
     fn parses_subject_sender_and_code() {
-        let parsed = parse_message(&raw("验证码", "您的验证码是：834921，10分钟内有效。"));
-        assert_eq!(parsed.subject, "验证码");
+        let parsed = parse_message(&raw("Code", "您的验证码是：834921，10分钟内有效。"));
+        assert_eq!(parsed.subject, "Code");
         assert_eq!(parsed.from, "小牛");
         assert_eq!(code_of(&parsed).as_deref(), Some("834921"));
     }
@@ -1702,8 +1702,8 @@ mod custom_endpoint_tests {
  #[test] fn microsoft_cloud_accounts_report_unsupported_before_connecting(){
   let a=Account{email:"test@hotmail.com".into(),provider:Provider::Microsoft,custom:None,enabled:true};
   let error=a.endpoint().expect_err("尚未支持的微软邮箱不能发起连接");
-  assert!(error.contains("OAuth")&&error.contains("暂不支持"));
-  assert!(Provider::Microsoft.label().contains("暂不支持"));
+  assert!(error.contains("OAuth")&&error.contains("doesn't support"));
+  assert!(Provider::Microsoft.label().contains("not supported"));
   for host in ["outlook.office365.com"," IMAP-MAIL.OUTLOOK.COM ","outlook.live.com","imap.outlook.com"]{
    let b=Account{email:"student@example.edu".into(),provider:Provider::Custom,custom:Some(CustomImap{host:host.into(),port:993,username:String::new()}),..a.clone()};
    assert_eq!(b.endpoint().unwrap_err(),error,"微软云主机应显示同一提示");

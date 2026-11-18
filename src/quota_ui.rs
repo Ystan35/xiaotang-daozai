@@ -838,30 +838,30 @@ mod tests {
     fn kiro_pool_details_include_monthly_reset_and_overage_once(){
         let s=quota::parse(Provider::Kiro,&serde_json::json!({"userInfo":{"userId":"details-user"},"usageBreakdownList":[{"resourceType":"CREDIT","usageLimitWithPrecision":1000,"currentUsageWithPrecision":1080,"currentOveragesWithPrecision":80,"overageCapWithPrecision":200,"nextDateReset":1796083200_i64}],"overageConfiguration":{"overageStatus":"ENABLED"}})).unwrap();
         let details=snapshot_details(&s);
-        assert_eq!(details.matches("月度额度").count(),1);
-        assert!(details.contains("超额上限余量：120 / 200 点"));
-        assert!(details.contains("重置"));
+        assert_eq!(details.matches("Monthly quota").count(),1);
+        assert!(details.contains("Overage cap: 120 / 200 pts"));
+        assert!(details.contains("Resets"));
     }
     #[test] fn api_details_include_third_window_tools_and_resets(){
         let w=|label:&str|quota::Window{label:label.into(),seconds:None,remaining:0.0,reset:Some(4102444800),amount:None};
-        let snapshot=Snapshot{windows:vec![w("滚动"),w("本周"),w("本月")],extra:vec![w("工具额度")],..Default::default()};
-        let detail=snapshot_details(&snapshot);for label in ["滚动","本周","本月","工具额度"]{assert!(detail.contains(label));}assert!(detail.contains("重置"));
+        let snapshot=Snapshot{windows:vec![w("Rolling"),w("This week"),w("This month")],extra:vec![w("工具额度")],..Default::default()};
+        let detail=snapshot_details(&snapshot);for label in ["Rolling","This week","This month","工具额度"]{assert!(detail.contains(label));}assert!(detail.contains("Resets"));
     }
     #[test]
     fn claude_local_quota_displays_only_recorded_reset_times(){
         let now=chrono::Local::now();let id="local-fixture".to_string();
-        let account=Account{id:id.clone(),provider:Provider::Claude,alias:"离线账号".into(),source:"fixture/config.json".into(),slot:Some("fixture-slot".into()),enabled:true,pinned:true};
+        let account=Account{id:id.clone(),provider:Provider::Claude,alias:"Offline account".into(),source:"fixture/config.json".into(),slot:Some("fixture-slot".into()),enabled:true,pinned:true};
         let mut state=State::default();state.config.accounts.push(account.clone());
-        let window=quota::Window{label:"5 小时".into(),seconds:Some(18000),remaining:37.5,reset:None,amount:None};
+        let window=quota::Window{label:"5 hours".into(),seconds:Some(18000),remaining:37.5,reset:None,amount:None};
         let snapshot=Snapshot{at:now.timestamp(),windows:vec![window.clone()],..Default::default()};
         state.receive(quota::Event{id:id.clone(),result:Ok(snapshot.clone())});
-        assert_eq!(reset_text(window.reset,&now),"重置时间未知");
+        assert_eq!(reset_text(window.reset,&now),"Reset time unknown");
         assert_eq!(state.rows[&id].as_ref().unwrap().windows[0],window);
         let later=now+chrono::Duration::minutes(11);
-        assert_eq!(reset_text(window.reset,&later),"重置时间未知");
+        assert_eq!(reset_text(window.reset,&later),"Reset time unknown");
         assert_eq!(state.rows[&id].as_ref().unwrap().windows[0].remaining,37.5,"缺少重置时间不能影响额度百分比");
         let actual=quota::Window{reset:Some(now.timestamp()+1200),remaining:20.0,..window.clone()};
-        assert_ne!(reset_text(actual.reset,&now),"重置时间未知");
+        assert_ne!(reset_text(actual.reset,&now),"Reset time unknown");
         state.receive(quota::Event{id:id.clone(),result:Ok(Snapshot{windows:vec![actual.clone()],..snapshot})});
         assert_eq!(state.rows[&id].as_ref().unwrap().windows[0],actual,"本地更新仍应正常生效");
     }
@@ -869,16 +869,16 @@ mod tests {
     fn claude_local_records_do_not_restore_old_online_snapshots_or_claim_a_new_update(){
         let path=std::env::temp_dir().join(format!("daozai-claude-cache-{}.json",std::process::id()));
         let mut config=Config::default();let id="claude-local".to_string();config.accounts.push(Account{id:id.clone(),provider:Provider::Claude,alias:"Claude".into(),source:"desktop/config.json".into(),slot:Some("fixture".into()),enabled:true,pinned:true});
-        let at=chrono::Utc::now().timestamp()-3600;let snapshot=Snapshot{at,windows:vec![quota::Window{label:"5 小时".into(),seconds:Some(18000),remaining:72.0,reset:None,amount:None}],..Default::default()};
+        let at=chrono::Utc::now().timestamp()-3600;let snapshot=Snapshot{at,windows:vec![quota::Window{label:"5 hours".into(),seconds:Some(18000),remaining:72.0,reset:None,amount:None}],..Default::default()};
         std::fs::write(&path,serde_json::json!({&id:{"provider":"Claude","slot":"fixture","snapshot":snapshot}}).to_string()).unwrap();
         let mut state=State::restore(config.clone(),path.clone());assert!(state.rows.is_empty(),"迁移后不能把旧联网缓存显示为本地数据");
-        state.receive(quota::Event{id:id.clone(),result:Ok(snapshot)});assert!(state.stale[&id].contains("本地记录较旧"));
+        state.receive(quota::Event{id:id.clone(),result:Ok(snapshot)});assert!(state.stale[&id].contains("Local record is stale"));
         let restored=State::restore(config,path.clone());assert_eq!(restored.rows[&id].as_ref().unwrap().at,at,"读取缓存不能刷新官方记录时间");std::fs::remove_file(path).unwrap();
     }
     #[test]
     fn claude_verified_history_survives_client_exit_and_island_restart(){
         let path=std::env::temp_dir().join(format!("daozai-claude-exit-{}.json",std::process::id()));let mut config=Config::default();let id="claude-closed".to_string();config.accounts.push(Account{id:id.clone(),provider:Provider::Claude,alias:"Claude".into(),source:"desktop/config.json".into(),slot:Some("verified-owner".into()),enabled:true,pinned:true});
-        let at=chrono::Utc::now().timestamp()-60;let snapshot=Snapshot{at,windows:vec![quota::Window{label:"本周".into(),seconds:Some(604800),remaining:16.0,reset:Some(at+86400),amount:None}],..Default::default()};
+        let at=chrono::Utc::now().timestamp()-60;let snapshot=Snapshot{at,windows:vec![quota::Window{label:"This week".into(),seconds:Some(604800),remaining:16.0,reset:Some(at+86400),amount:None}],..Default::default()};
         let mut state=State::restore(config.clone(),path.clone());state.receive(quota::Event{id:id.clone(),result:Ok(snapshot.clone())});state.receive(quota::Event{id:id.clone(),result:Err("客户端已关闭，等待新记录".into())});assert_eq!(state.rows[&id].as_ref().unwrap().windows,snapshot.windows);assert!(state.stale.contains_key(&id));
         let mut restarted=State::restore(config,path.clone());assert_eq!(restarted.rows[&id].as_ref().unwrap().windows,snapshot.windows);restarted.receive(quota::Event{id:id.clone(),result:Err("等待新记录".into())});assert_eq!(restarted.rows[&id].as_ref().unwrap().windows,snapshot.windows);assert_eq!(restarted.rows[&id].as_ref().unwrap().at,at);std::fs::remove_file(path).unwrap();
     }
@@ -992,10 +992,10 @@ mod tests {
     fn quota_reset_uses_local_calendar_dates_and_clock_times(){
         let now=chrono::Local.with_ymd_and_hms(2026,10,31,22,0,0).unwrap();
         for (parts,expected) in [
-            ((2026,10,31,23,30),"今天 23:30 重置"),
-            ((2026,11,1,9,0),"11月1日 09:00 重置"),
-            ((2026,11,3,9,0),"11月3日 09:00 重置"),
-            ((2027,1,1,9,0),"2027/1/1 09:00 重置"),
+            ((2026,10,31,23,30),"Resets today 23:30"),
+            ((2026,11,1,9,0),"Resets Nov 1 09:00"),
+            ((2026,11,3,9,0),"Resets Nov 3 09:00"),
+            ((2027,1,1,9,0),"Resets 2027/1/1 09:00"),
         ] {
             let (year,month,day,hour,minute)=parts;
             let at=chrono::Local.with_ymd_and_hms(year,month,day,hour,minute,0).unwrap().timestamp();
@@ -1005,10 +1005,10 @@ mod tests {
     #[test]
     fn quota_reset_does_not_invent_missing_or_expired_times(){
         let now=chrono::Local.with_ymd_and_hms(2026,10,31,22,0,0).unwrap();
-        assert_eq!(reset_text(None,&now),"重置时间未知");
-        assert_eq!(reset_text(Some(i64::MAX),&now),"重置时间未知");
-        assert_eq!(reset_text(Some(now.timestamp()),&now),"等待刷新");
-        assert_eq!(reset_text(Some(now.timestamp()-1),&now),"等待刷新");
+        assert_eq!(reset_text(None,&now),"Reset time unknown");
+        assert_eq!(reset_text(Some(i64::MAX),&now),"Reset time unknown");
+        assert_eq!(reset_text(Some(now.timestamp()),&now),"Waiting to refresh");
+        assert_eq!(reset_text(Some(now.timestamp()-1),&now),"Waiting to refresh");
     }
 }
 

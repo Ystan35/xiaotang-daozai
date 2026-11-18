@@ -82,7 +82,7 @@ fn parse_body(raw:&[u8],headers:&[u8],at:i64,now:i64)->Option<Snapshot>{
     }else{decoded.extend_from_slice(raw);}
     if decoded.len()>MAX_BODY{return None;}
     let data:Usage=serde_json::from_slice(&decoded).ok()?;let mut snapshot=Snapshot{at,..Default::default()};
-    for (window,kind,label,seconds) in [(data.five_hour,"session","5 小时",18000),(data.seven_day,"weekly_all","本周",604800)]{
+    for (window,kind,label,seconds) in [(data.five_hour,"session","5 hours",18000),(data.seven_day,"weekly_all","This week",604800)]{
         let Some(window)=window.as_ref().or_else(||data.limits.iter().find(|w|w.kind.as_deref()==Some(kind)))else{continue;};
         let Some(used)=window.utilization.or(window.used_percentage).or(window.percent).filter(|n|n.is_finite()&&(0.0..=100.0).contains(n))else{continue;};
         let reset=window.resets_at.as_str().and_then(|s|chrono::DateTime::parse_from_rfc3339(s).ok()).map(|t|t.timestamp()).filter(|t|*t>now&&*t>at&&*t<=at+seconds+60);
@@ -169,7 +169,7 @@ mod tests{
     fn desktop_cache_supports_limit_rows_and_never_infers_missing_windows(){
         let path=dir();let now=chrono::Utc::now().timestamp();
         let data=json!({"limits":[{"kind":"weekly_all","percent":84,"is_active":false,"resets_at":chrono::DateTime::from_timestamp(now+86400,0).unwrap().to_rfc3339()}],"private-field":"not-retained"});
-        fixture(&path,"local-org",now,&serde_json::to_vec(&data).unwrap());let snapshot=read(&path,"local-org",now,now).unwrap();assert_eq!(snapshot.windows.len(),1);assert_eq!(snapshot.windows[0].label,"本周");assert_eq!(snapshot.windows[0].remaining,16.0);assert_eq!(snapshot.windows[0].reset,Some(now+86400));let _=std::fs::remove_dir_all(path);
+        fixture(&path,"local-org",now,&serde_json::to_vec(&data).unwrap());let snapshot=read(&path,"local-org",now,now).unwrap();assert_eq!(snapshot.windows.len(),1);assert_eq!(snapshot.windows[0].label,"This week");assert_eq!(snapshot.windows[0].remaining,16.0);assert_eq!(snapshot.windows[0].reset,Some(now+86400));let _=std::fs::remove_dir_all(path);
     }
     #[cfg(windows)]
     #[test]

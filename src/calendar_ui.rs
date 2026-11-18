@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn featured_calendar_excludes_ended_and_all_day_events() {
         let make=|uid:&str,start,end,all_day|mail::Meeting{uid:uid.into(),title:uid.into(),start,end:Some(end),all_day,at:String::new()};
-        let events=[make("全天",0,86400,true),make("已结束",10,20,false),make("下一场",200,300,false),make("进行中",80,150,false)];
+        let events=[make("All day",0,86400,true),make("Ended",10,20,false),make("下一场",200,300,false),make("Now",80,150,false)];
         let entries:Vec<_>=events.iter().map(|event|Entry{event,sources:vec![Source::Local]}).collect();
         assert_eq!(featured_index(&entries,None,100),Some(3));
         assert_eq!(featured_index(&entries,None,160),Some(2));

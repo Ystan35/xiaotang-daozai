@@ -1139,7 +1139,7 @@ mod tests {
         take_trace();
         let (lrclib,worker)=serve(vec![("200 OK","[]".into())]);
         let _=fetch_with_sources_detail(None,None,Some(&lrclib),"Track","Artist",120.0);worker.join().unwrap();
-        assert_eq!(take_trace(),vec!["LRCLIB:未找到".to_string()]);
+        assert_eq!(take_trace(),vec!["LRCLIB:not found".to_string()]);
         for _ in 0..100 {trace(||"步骤".into());}
         assert_eq!(take_trace().len(),TRACE_LIMIT,"单次记录有上限");
         assert!(take_trace().is_empty());

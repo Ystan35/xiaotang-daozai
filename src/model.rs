@@ -930,9 +930,9 @@ mod tests {
         assert_eq!(loaded.progress("2026-11-03"), (1, 1));
         assert_eq!(loaded.progress("2026-11-04"), (1, 2));
         assert_eq!(loaded.display_order("2026-11-03"), vec![0, 1],"已完成事项应排在其他日期的未完成事项后面");
-        assert_eq!(repeat_label(REPEAT_WORKDAYS), "工作日");
-        assert_eq!(repeat_label(0b101_0101), "每周一、三、五、日");
-        assert_eq!(repeat_tag(0b001_0101), "周一三五");
+        assert_eq!(repeat_label(REPEAT_WORKDAYS), "Weekdays");
+        assert_eq!(repeat_label(0b101_0101), "Every Mon, Wed, Fri, Sun");
+        assert_eq!(repeat_tag(0b001_0101), "Mo We Fr");
     }
 
     #[test]

@@ -1311,7 +1311,7 @@ impl App {
                 None,
             ),
             (
-                "腾讯企业邮",
+                "Tencent Exmail",
                 "会议邀请：周五方案评审",
                 "09:12",
                 None,

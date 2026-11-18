@@ -526,7 +526,7 @@ mod tests {
             assert!(transfer(&mut &bad[..], &mut Vec::new(), &package, &cancel, |_|{}).is_err());
         }
         cancel.store(true, Ordering::Relaxed);
-        assert!(transfer(&mut &data[..], &mut Vec::new(), &package, &cancel, |_|{}).unwrap_err().contains("取消"));
+        assert!(transfer(&mut &data[..], &mut Vec::new(), &package, &cancel, |_|{}).unwrap_err().contains("cancelled"));
     }
     #[test]
     #[ignore = "需要连接 GitHub"]
@@ -558,13 +558,13 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         tx.send(Event::Ready(work.clone())).unwrap();
         state.poll(&egui::Context::default());
-        assert_eq!(state.message, "下载已取消");
+        assert_eq!(state.message, "Download cancelled");
         assert!(state.rx.is_none()); assert!(!work.exists());
     }
 
     #[test]
     fn only_a_new_release_opens_the_update_dialog() {
-        for result in [Ok(None), Err("网络失败".into()), Ok(Some(Release {
+        for result in [Ok(None), Err("network error".into()), Ok(Some(Release {
             version: "v0.6.40".into(), notes: String::new(), page: RELEASES.into(), package: None,
         }))] {
             let expected = matches!(&result, Ok(Some(_)));
@@ -621,7 +621,7 @@ mod tests {
             ("update-dialog", None, ""),
             ("update-connecting", Some(0.0), ""),
             ("update-downloading", Some(0.42), ""),
-            ("update-failed", None, "连接下载服务器失败，请检查网络或代理，或使用网盘下载"),
+            ("update-failed", None, "Can't reach the download server; check network or proxy, or use the cloud drive download"),
         ] {
         app.updates.cancel = progress.map(|_| Arc::new(AtomicBool::new(false)));
         app.updates.progress = progress.unwrap_or_default();

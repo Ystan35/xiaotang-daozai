@@ -156,7 +156,7 @@ impl Config {
         let (tx,rx)=mpsc::channel();let cancel=std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         tx.send(Ok(Validated{provider:Provider::Sub2Api,source:"https://relay.example/prefix".into(),alias:"Relay".into(),key:"synthetic".into(),snapshot:Snapshot::default()})).ok().unwrap();
         let connection=Connect{rx,cancel:cancel.clone(),deadline:Some(std::time::Instant::now())};
-        assert!(connection.poll().unwrap().err().unwrap().contains("Timed out"));assert!(cancel.load(std::sync::atomic::Ordering::Acquire));
+        assert!(connection.poll().unwrap().err().unwrap().contains("timed out"));assert!(cancel.load(std::sync::atomic::Ordering::Acquire));
     }
     #[cfg(windows)]
     #[test]

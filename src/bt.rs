@@ -247,7 +247,7 @@ mod tests {
         let d = Device { id: "1".into(), name: "Headset".into(), battery: None, kind: DeviceKind::Headphones };
         assert_eq!(d.summary(), "Headset");
         let d = Device { battery: Some(80), ..d };
-        assert_eq!(d.summary(), "Headset · 电量 80%");
+        assert_eq!(d.summary(), "Headset · battery 80%");
     }
 }
 

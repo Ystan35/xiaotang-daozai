@@ -31,7 +31,7 @@ fn office_reminders_keep_instances_separate_and_unknown_accounts_require_explici
         h.app.discard_unread(accounts[0]);assert_eq!(h.app.pending_messengers,[accounts[2],Unread::of(source)]);
         h.app.discard_unread(accounts[2]);assert_eq!(h.app.pending_messengers,[Unread::of(source)]);
         h.app.reveal_messenger_notice(Unread::of(source));for _ in 0..45{h.frame(vec![]);}
-        h.click_text("关闭");h.frame(vec![]);assert!(h.app.pending_messengers.is_empty());
+        h.click_text("Close");h.frame(vec![]);assert!(h.app.pending_messengers.is_empty());
     }
 }
 #[test]
@@ -71,7 +71,7 @@ fn five_client_icons_fit_collapsed_and_expand_to_their_own_click_targets(){
     h.app.reveal_unread();for _ in 0..90{h.frame(vec![]);}
     let first=h.ctx.read_response(egui::Id::new(("card",true,"微信".to_string()))).unwrap();
     h.hover(first.rect.center(),0.1);for _ in 0..20{h.wheel(-50.0);}h.frame(vec![]);
-    let target=h.ctx.read_response(egui::Id::new(("card",true,"钉钉".to_string()))).unwrap();
+    let target=h.ctx.read_response(egui::Id::new(("card",true,"DingTalk".to_string()))).unwrap();
     h.click(target.rect.center());
     assert!(h.cmds.iter().any(|cmd|matches!(cmd,Cmd::ViewMessenger(unread) if unread.source==Messenger::DingTalk)));
 }
@@ -128,7 +128,7 @@ fn taskbar_duplicate_flashes_do_not_restart_the_unread_alert(){
 fn qq_text_matching_an_island_reminder_is_not_a_self_notification_echo(){
     let _guard=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());let mut h=H::new();
     h.app.settings.read_notifications=true;
-    h.app.alert("喝水时间到了","喝点水吧",2,true);
+    h.app.alert("Time to drink water","喝点水吧",2,true);
     h.app.receive_notification("QQ".into(),"QQ".into(),"喝水时间到了 · 喝点水吧".into());
     assert_eq!(h.app.pending_messengers,[Unread::of(Messenger::Qq)],"QQ 的真实消息不能只因文字相同就被当成岛仔通知回传");
 }

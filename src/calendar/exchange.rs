@@ -112,7 +112,7 @@ impl<'a> Session<'a> {
     fn provision(&mut self) -> Result<(), Failure> {
         self.provisioned = true;
         let label = self.cfg.provider.label();
-        let refused = || Failure::text(format!("{label}要求设备满足安全策略（如锁屏密码、远程擦除），岛仔不执行这些管控；请联系管理员允许不受管控的设备"));
+        let refused = || Failure::text(format!("{label} requires device security policies (such as a lock-screen password or remote wipe), which Daozai doesn't enforce; ask your admin to allow unmanaged devices"));
         let first = command(&self.agent, self.cfg, self.password, "Provision", &provision_request(None), None)?;
         // 服务器下发远程擦除时绝不执行，直接停止同步。
         if first.child(PROVISION, 0x0c).is_some() { return Err(refused()); }
@@ -359,7 +359,7 @@ mod tests {
         let cfg=super::super::load_configs().into_iter().find(|c|c.provider==Provider::WeCom).expect("需要已连接的企业微信");
         let password=super::super::secrets::load(&cfg).unwrap();let agent=super::super::agent();
         let folders=command(&agent,&cfg,&password,"FolderSync",&node(FOLDER,0x16,"",vec![node(FOLDER,0x12,"0",vec![])]),None).unwrap();
-        check_status(&folders,FOLDER,0x0c,"企业微信").unwrap();
+        check_status(&folders,FOLDER,0x0c,"WeCom").unwrap();
         for (i,folder) in folders.child(FOLDER,0x0e).unwrap().children.iter().enumerate(){
             println!("folder={i} tag={} type={} selected={}",folder.tag,folder.text(FOLDER,0x0a),matches!(folder.text(FOLDER,0x0a),"8"|"13"));
             if !matches!(folder.text(FOLDER,0x0a),"8"|"13"){continue;}
@@ -367,7 +367,7 @@ mod tests {
             for page in 0..100{
                 let result=command(&agent,&cfg,&password,"Sync",&sync_request(id,&key),None).unwrap();
                 let collection=result.child(AIR,0x1c).and_then(|n|n.child(AIR,0x0f)).unwrap();
-                check_status(collection,AIR,0x0e,"企业微信").unwrap();
+                check_status(collection,AIR,0x0e,"WeCom").unwrap();
                 let count=collection.child(AIR,0x16).map_or(0,|n|n.children.len());
                 println!("folder={i} page={page} records={count} more={}",collection.child(AIR,0x14).is_some());
                 let initial=key=="0";key=collection.required(AIR,0x0b).unwrap().to_owned();
@@ -528,7 +528,7 @@ mod tests {
     fn exchange_refuses_remote_wipe_and_handshakes_on_unprovisioned_status() {
         let (base, worker) = mock(vec![Box::new(|_| (449, None)), Box::new(|_| (200, Some(policy_reply("1", "temp", true))))]);
         let error = super::super::fetch_month(&custom(&base), "pw", chrono::NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()).err().unwrap();
-        assert!(error.message.contains("不执行"), "{}", error.message);
+        assert!(error.message.contains("doesn't enforce"), "{}", error.message);
         assert_eq!(worker.join().unwrap().len(), 2, "收到远程擦除后不再继续请求");
         // 服务器用状态 142 表示设备未登记策略：同样先握手再同步。
         let (base, worker) = mock(vec![
@@ -544,7 +544,7 @@ mod tests {
         // 管理员不允许不受管控的设备：如实提示，不伪装成已执行策略。
         let (base, worker) = mock(vec![Box::new(|_| (449, None)), Box::new(|_| (200, Some(policy_reply("1", "temp", false)))), Box::new(|_| (200, Some(policy_reply("2", "", false))))]);
         let error = super::super::fetch_month(&custom(&base), "pw", chrono::NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()).err().unwrap();
-        assert!(error.message.contains("管理员"), "{}", error.message);
+        assert!(error.message.contains("admin"), "{}", error.message);
         worker.join().unwrap();
     }
 

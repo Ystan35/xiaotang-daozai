@@ -262,7 +262,7 @@ mod tests {
         let(started,ready)=mpsc::channel();let(release,blocked)=mpsc::channel();
         cache.start(ctx.clone(),move|_|{
             let _=started.send(());let _=blocked.recv();
-            Loaded{image:None,metadata:"文件夹".into()}
+            Loaded{image:None,metadata:"Folder".into()}
         });
         let path=Path::new("blocked-preview");
         assert!(cache.get(&ctx,path).is_none());

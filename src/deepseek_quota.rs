@@ -90,7 +90,7 @@ impl Connect {
 mod tests {
     use super::*;use serde_json::json;
     #[test] fn deepseek_auth_and_access_errors_are_distinct(){
-        assert!(response_error(401).0.contains("401"));assert!(response_error(401).0.contains("重试"));assert!(!response_error(401).0.contains("重新连接"));
+        assert!(response_error(401).0.contains("401"));assert!(response_error(401).0.contains("try again"));assert!(!response_error(401).0.contains("Reconnect"));
         assert!(!response_error(403).0.contains("Key"));assert!(response_error(403).0.contains("403"));
         assert_eq!(response_error(429).1,180);assert!(response_error(503).0.contains("503"));
         assert!(!response_error(401).0.contains("DeepSeek"));

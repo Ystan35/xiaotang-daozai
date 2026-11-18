@@ -168,7 +168,7 @@ mod tests {
         use chrono::TimeZone;
         let now=chrono::Local.with_ymd_and_hms(2026,11,13,10,0,0).single().unwrap().timestamp();
         assert_eq!(reset_label(now+5*3600,now),"15:00");
-        assert_eq!(reset_label(now+20*3600,now),"明天 06:00");
+        assert_eq!(reset_label(now+20*3600,now),"Tomorrow 06:00");
         assert_eq!(reset_label(now+3*86400,now),"11/16 10:00");
     }
 }

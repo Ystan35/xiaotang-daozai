@@ -657,7 +657,7 @@ mod tests {
         let now=10_000;
         assert!(state.should_refresh("",200.0,now,true),"无数据时照常刷新");
         for (failures,wait) in [(1,120.0),(2,240.0),(3,480.0),(4,960.0),(5,1800.0),(9,1800.0)] {
-            state.failures=failures;state.error=Some("网络不可用".into());
+            state.failures=failures;state.error=Some("No network".into());
             assert_eq!(state.backoff(),wait);
             assert!(!state.should_refresh("",wait-1.0,now,true),"第 {failures} 次失败后 {wait} 秒内不应自动重试");
             assert!(state.should_refresh("",wait,now,true));
@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(candidates.len(),2);
         assert_eq!(candidates[0].region,"迪庆藏族自治州 · 云南 · 中国");
         assert_eq!(candidates[1].region,"广东 · 中国");
-        assert!(unique_city(candidates.clone(),"佛山").unwrap_err().contains("同名"));
+        assert!(unique_city(candidates.clone(),"佛山").unwrap_err().contains("Several places"));
         assert_eq!(unique_city(vec![candidates[1].clone()],"佛山市").unwrap().lat,23.02677);
         assert!(unique_city(vec![],"未知城市").is_err());
         // 完全同名的排前面，其次人口多的；坐标重合的同名地点只留一个。
@@ -764,7 +764,7 @@ mod tests {
 
     #[test]
     fn weather_manual_refresh_respects_success_and_failure_cooldowns(){
-        for (error,cooldown) in [(None,30.0),(Some("网络不可用".to_string()),120.0)] {
+        for (error,cooldown) in [(None,30.0),(Some("No network".to_string()),120.0)] {
             let mut state=State {last_start:100.0,last_city:Some("杭州".into()),error,..Default::default()};
             state.refresh("杭州",100.0+cooldown-1.0);
             assert!(!state.loading,"手动刷新也应遵守 {cooldown} 秒请求间隔");
@@ -780,7 +780,7 @@ mod tests {
         state.last_city=Some("杭州".into());state.last_start=0.0;
         assert!(!state.can_refresh("杭州",29.0),"启动时刻为零也必须限流");
         assert!(state.should_refresh("杭州",30.0,1000,true));
-        state.error=Some("网络不可用".into());
+        state.error=Some("No network".into());
         assert!(!state.should_refresh("杭州",119.0,1000,true));
         assert!(state.should_refresh("杭州",120.0,1000,true));
         assert!(state.can_refresh("北京",1.0),"确认其他城市后可以立即查询");
@@ -844,9 +844,9 @@ mod tests {
         assert_eq!(s.high, Some(15.2));
         assert_eq!(s.low, Some(6.8));
         assert_eq!(s.days.len(), 4);
-        assert_eq!(s.days[0].label, "今天");
-        assert_eq!(s.days[1].label, "明天");
-        assert_eq!(s.days[2].label, "周三");
+        assert_eq!(s.days[0].label, "Today");
+        assert_eq!(s.days[1].label, "Tomorrow");
+        assert_eq!(s.days[2].label, "Wed");
         assert_eq!(s.days[3].rain, 25);
         assert_eq!(s.sunrise.as_deref(), Some("06:52"), "应截取日出时间的 HH:MM");
         assert_eq!(s.sunset.as_deref(), Some("17:21"));
@@ -867,7 +867,7 @@ mod tests {
         payload["daily"]["temperature_2m_min"]=json!([6,4,5,8,9,10,11]);
         let snapshot=parse("杭州",&payload).unwrap();
         assert_eq!(snapshot.days.len(),7);
-        assert_eq!(snapshot.days[6].label,"周日");
+        assert_eq!(snapshot.days[6].label,"Sun");
         assert_eq!(snapshot.days[6].high,22.0);
         let mut cached=serde_json::to_value(parse("杭州",&sample()).unwrap()).unwrap();
         cached.as_object_mut().unwrap().remove("sun_times");
@@ -907,7 +907,7 @@ mod tests {
         for (zone,rise,set) in [(json!("Asia/Shanghai"),Value::Null,Value::Null),(json!("Asia/Shanghai"),json!("2026-11-09T18:00"),json!("2026-11-09T06:00")),(Value::Null,json!("2026-11-09T06:52"),json!("2026-11-09T17:21"))] {
             let mut payload=sample();payload["timezone"]=zone;
             payload["daily"]["sunrise"][0]=rise;payload["daily"]["sunset"][0]=set;
-            assert!(parse("当地",&payload).unwrap().sun_times.is_none());
+            assert!(parse("Local",&payload).unwrap().sun_times.is_none());
         }
     }
 
@@ -926,12 +926,12 @@ mod tests {
         assert_eq!(kind(75, true), Kind::Snow);
         assert_eq!(kind(73, true), Kind::Snow);
         assert_eq!(kind(97, true), Kind::Thunder);
-        assert_eq!(describe(0), "晴");
-        assert_eq!(describe(63), "中雨");
-        assert_eq!(describe(73), "中雪");
-        assert_eq!(describe(53), "毛毛雨");
-        assert_eq!(describe(97), "强雷阵雨");
-        assert_eq!(describe(200), "多云", "未知代码退回多云");
+        assert_eq!(describe(0), "Clear");
+        assert_eq!(describe(63), "Rain");
+        assert_eq!(describe(73), "Snow");
+        assert_eq!(describe(53), "Drizzle");
+        assert_eq!(describe(97), "Strong thunderstorm");
+        assert_eq!(describe(200), "Cloudy", "未知代码退回多云");
     }
 
     #[test]

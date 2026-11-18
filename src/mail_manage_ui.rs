@@ -206,7 +206,7 @@ impl App{
         assert!(app.mail.manage.pending.contains("test@example.com"));
         let request=match app.pending.pop().unwrap(){Cmd::MailManage(r)=>r,_=>panic!()};
         app.mail_managed(Completed{request,result:Err("The server refused the action".into())});
-        assert!(app.mail.manage.pending.is_empty());assert!(app.mail.manage.message.contains("Server refused"));
+        assert!(app.mail.manage.pending.is_empty());assert!(app.mail.manage.message.contains("server refused"));
     }
     #[test]fn local_trash_keeps_its_own_limit_when_inbox_also_has_recent_mail(){
         let ctx=eframe::egui::Context::default();let mut app=App::new(&ctx,Default::default());let a=account();app.mail.accounts=vec![a.clone()];app.settings.mail_sync_operations=false;app.mail.recent.clear();

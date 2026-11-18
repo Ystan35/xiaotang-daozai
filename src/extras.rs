@@ -676,10 +676,10 @@ mod tests {
             egui::CentralPanel::default().frame(egui::Frame::new()).show(ctx,|ui|{
                 ui.spacing_mut().button_padding=egui::vec2(10.0,6.0);
                 for mut value in [0u32,25,180] {
-                    let row=ui.horizontal(|ui|{number_stepper(ui,&mut value,0,180," 分钟",1,76.0);});
+                    let row=ui.horizontal(|ui|{number_stepper(ui,&mut value,0,180," min",1,76.0);});
                     assert!(row.response.rect.width()<=140.1,"数值控件超出预留宽度：{}",row.response.rect.width());
                 }
-                for mut value in [25u32,5,15] {setting_number(ui,"计时时长",&mut value,1,180," 分钟",1.0);}
+                for mut value in [25u32,5,15] {setting_number(ui,"Durations",&mut value,1,180," min",1.0);}
                 assert!(ui.min_rect().right()<=340.1,"连续数值行不应撑宽卡片");
             });
         });
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn settings_groups_keep_every_page_reachable() {
-        let groups = ["常规", "音乐与歌词", "专注与饮水", "专注与饮水", "待办与置物", "待办与置物", "通知、邮箱与日程", "通知、邮箱与日程", "通知、邮箱与日程", "关于", "页面管理", "AI 额度", "天气"];
+        let groups = ["General", "Music & lyrics", "Focus & water", "Focus & water", "To-do & shelf", "To-do & shelf", "Notifications, mail & calendar", "Notifications, mail & calendar", "Notifications, mail & calendar", "About", "Pages", "AI quota", "Weather"];
         for (tab, expected) in groups.iter().enumerate() {
             let matches: Vec<_> = SETTINGS_GROUPS.iter().filter(|(_,start,end)| (*start..=*end).contains(&tab)).collect();
             assert_eq!(matches.len(), 1, "页面 {tab} 必须且只能属于一个分组");
@@ -697,11 +697,11 @@ mod tests {
 
     #[test]
     fn bluetooth_notice_uses_real_connection_and_battery_data(){
-        assert_eq!(bluetooth_notice_content("OpenMove by Shokz · 电量 80%"),("OpenMove by Shokz","已连接",Some(80)));
-        assert_eq!(bluetooth_notice_content("耳机"),("耳机","已连接",None));
-        assert_eq!(bluetooth_notice_content("已断开连接"),("蓝牙设备","已断开",None));
-        assert_eq!(bluetooth_notice_content("青龙键盘 · 已断开"),("青龙键盘","已断开",None));
-        assert_eq!(bluetooth_notice_content("耳机 · 电量 101%"),("耳机 · 电量 101%","已连接",None));
+        assert_eq!(bluetooth_notice_content("OpenMove by Shokz · battery 80%"),("OpenMove by Shokz","Connected",Some(80)));
+        assert_eq!(bluetooth_notice_content("耳机"),("耳机","Connected",None));
+        assert_eq!(bluetooth_notice_content("Disconnected"),("Bluetooth device","Disconnected",None));
+        assert_eq!(bluetooth_notice_content("青龙键盘 · Disconnected"),("青龙键盘","Disconnected",None));
+        assert_eq!(bluetooth_notice_content("耳机 · battery 101%"),("耳机 · battery 101%","Connected",None));
     }
 
     #[test]
@@ -1299,7 +1299,7 @@ impl App {
                     }
                 }
                 ui.visuals_mut().selection.bg_fill=settings_color(ctx,Color32::from_rgb(45,105,165),Color32::from_rgb(209,226,248));
-                let titles=["General","Music & lyrics","Focus","Health reminders","To-do","Shelf","Notifications","Mail","Event","About","Pages","AI quota","Weather"];
+                let titles=["General","Music & lyrics","Focus","Health reminders","To-do","Shelf","Notifications","Mail","Calendar","About","Pages","AI quota","Weather"];
                 ui.label(egui::RichText::new(titles[self.settings_tab.min(12)]).size(18.0).strong().color(settings_color(ctx,Color32::WHITE,Color32::from_rgb(30,34,41))));
                 if let Some((_,start,end))=SETTINGS_GROUPS.iter().find(|(_,start,end)|(*start..=*end).contains(&self.settings_tab)) {
                     if start!=end {

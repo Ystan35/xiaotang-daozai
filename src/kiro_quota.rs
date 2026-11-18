@@ -176,7 +176,7 @@ pub(super) fn parse(v:&Value)->Result<Snapshot,String>{
     if v["overageConfiguration"]["overageStatus"].as_str().is_some_and(|s|s.eq_ignore_ascii_case("ENABLED")){
         if !credit["overageCapWithPrecision"].is_null()||!credit["overageCap"].is_null(){
             let cap=amount_field(credit,"overageCapWithPrecision","overageCap")?;
-            if cap>0.0{let left=(cap-overage).max(0.0);snapshot.windows.push(Window{label:"Overage cap left".into(),seconds:None,remaining:(left/cap*100.0).clamp(0.0,100.0) as f32,reset,amount:Some(Amount::new(left,cap))});}
+            if cap>0.0{let left=(cap-overage).max(0.0);snapshot.windows.push(Window{label:"Overage cap".into(),seconds:None,remaining:(left/cap*100.0).clamp(0.0,100.0) as f32,reset,amount:Some(Amount::new(left,cap))});}
         }
     }
     snapshot.kiro=Some(Details{owner,pools});Ok(snapshot)
@@ -214,11 +214,11 @@ mod tests{
         let s=parse(&json!({"userInfo":{"userId":"test-user"},"usageBreakdownList":[{"resourceType":"CREDIT","currentUsageWithPrecision":130.5,"usageLimitWithPrecision":1000.0,
             "currentOveragesWithPrecision":30.5,"overageCapWithPrecision":200.0,"nextDateReset":1900000000.0}],"overageConfiguration":{"overageStatus":"ENABLED"}})).unwrap();
         assert_eq!(s.windows.len(),2);
-        assert_eq!(s.windows[0].label,"月度额度");assert_eq!(s.windows[0].remaining,90.0);assert_eq!(s.windows[0].reset,Some(1900000000));
+        assert_eq!(s.windows[0].label,"Monthly quota");assert_eq!(s.windows[0].remaining,90.0);assert_eq!(s.windows[0].reset,Some(1900000000));
         assert_eq!(s.windows[0].amount,Some(Amount::new(900.0,1000.0)));
-        assert_eq!(s.windows[0].summary(),"月度额度剩余 900 / 1000");
-        assert_eq!(s.windows[1].label,"超额上限余量");assert_eq!(s.windows[1].remaining,84.75);
-        assert_eq!(s.windows[1].amount,Some(Amount::new(169.5,200.0)));assert_eq!(s.windows[1].summary(),"超额上限余量剩余 169.5 / 200");
+        assert_eq!(s.windows[0].summary(),"Monthly quota 900 / 1000 left");
+        assert_eq!(s.windows[1].label,"Overage cap");assert_eq!(s.windows[1].remaining,84.75);
+        assert_eq!(s.windows[1].amount,Some(Amount::new(169.5,200.0)));assert_eq!(s.windows[1].summary(),"Overage cap 169.5 / 200 left");
     }
     #[test]fn amounts_keep_one_decimal_and_never_round_past_the_limit(){
         assert_eq!(Amount::new(904.09,1000.0).full(),"904.1 / 1000");
@@ -248,7 +248,7 @@ mod tests{
         let s=parse(&json!({"userInfo":{"userId":"test-user"},"subscriptionInfo":{"subscriptionTitle":"KIRO PRO"},"usageBreakdownList":[{"resourceType":"CREDIT",
             "currentUsageWithPrecision":95.91,"usageLimitWithPrecision":1000.0,"nextDateReset":1796083200.0}]})).unwrap();
         assert_eq!(s.plan,"KIRO PRO");assert!((s.windows[0].remaining-90.409).abs()<0.001);assert_eq!(s.windows[0].reset,Some(1796083200));
-        assert_eq!(s.windows[0].summary(),"月度额度剩余 904.1 / 1000");
+        assert_eq!(s.windows[0].summary(),"Monthly quota 904.1 / 1000 left");
     }
     #[test]fn server_identity_survives_token_refresh_and_separates_idc_users(){
         let a=owner(&json!({"accessToken":"old","clientIdHash":"same-client","userInfo":{"userId":"user-a"}})).unwrap();
@@ -271,19 +271,19 @@ mod tests{
         row["freeTrialInfo"]=json!({"freeTrialStatus":"ACTIVE","usageLimit":500,"currentUsage":100,"freeTrialExpiry":4102444800000_i64});
         row["bonuses"]=json!([{"status":"ACTIVE","displayName":"加购点数","usageLimit":125,"currentUsage":25,"expiresAt":4102444800_i64}]);
         row["overageCapWithPrecision"]=json!(200);v["overageConfiguration"]=json!({"overageStatus":"ENABLED"});
-        let s=parse(&v).unwrap();assert_eq!(s.windows[0].label,"可用点数");assert_eq!(s.windows[0].amount,Some(Amount::new(1400.0,1625.0)));assert_eq!(s.windows[0].reset,None);
+        let s=parse(&v).unwrap();assert_eq!(s.windows[0].label,"Available points");assert_eq!(s.windows[0].amount,Some(Amount::new(1400.0,1625.0)));assert_eq!(s.windows[0].reset,None);
         assert_eq!(s.windows[1].amount,Some(Amount::new(200.0,200.0)));let pools=s.kiro.unwrap().pools;
         assert_eq!(pools.len(),3);assert_eq!(pools[0].reset,Some(4102444800));assert_eq!(pools[1].expires,Some(4102444800));assert!(pools[1].reset.is_none());
     }
     #[test]
     fn single_bonus_matches_a_list_and_invalid_shapes_fail(){
         let mut v=payload();
-        let bonus=json!({"status":"ACTIVE","displayName":"赠送","usageLimit":30,"currentUsage":0});
+        let bonus=json!({"status":"ACTIVE","displayName":"Bonus","usageLimit":30,"currentUsage":0});
         for bonuses in [bonus.clone(),json!([bonus])]{
             v["usageBreakdownList"][0]["bonuses"]=bonuses;
             let s=parse(&v).unwrap();
             assert_eq!(s.windows[0].amount,Some(Amount::new(930.0,1030.0)));
-            assert_eq!(s.kiro.unwrap().pools[1].label,"赠送");
+            assert_eq!(s.kiro.unwrap().pools[1].label,"Bonus");
         }
         for invalid in [json!("unknown"),json!({}),json!([null])]{
             v["usageBreakdownList"][0]["bonuses"]=invalid;
@@ -327,7 +327,7 @@ mod tests{
     #[test]fn login_changes_during_a_query_discard_the_result_without_rewriting_tokens(){
         let path=std::env::temp_dir().join(format!("daozai-kiro-read-only-{}.json",std::process::id()));let original=json!({"accessToken":"first"}).to_string();std::fs::write(&path,&original).unwrap();
         let s=query_with(&path,|_|Ok(parse(&payload()).unwrap())).unwrap();assert!(s.kiro.is_some());assert_eq!(std::fs::read_to_string(&path).unwrap(),original);
-        let result=query_with(&path,|_|{std::fs::write(&path,json!({"accessToken":"second"}).to_string()).unwrap();Ok(parse(&payload()).unwrap())});assert!(result.unwrap_err().0.contains("已变化"));std::fs::remove_file(path).unwrap();
+        let result=query_with(&path,|_|{std::fs::write(&path,json!({"accessToken":"second"}).to_string()).unwrap();Ok(parse(&payload()).unwrap())});assert!(result.unwrap_err().0.contains("changed"));std::fs::remove_file(path).unwrap();
     }
     fn server(status:&str,headers:&str,body:Vec<u8>)->(String,std::thread::JoinHandle<String>){
         use std::io::{Read,Write};
@@ -350,11 +350,11 @@ mod tests{
     }
     #[test]fn redirects_and_responses_without_user_identity_are_rejected(){
         let l=login(&json!({"accessToken":"synthetic"})).unwrap();let(url,task)=server("302 Found","Location: http://127.0.0.1:1/\r\n",Vec::new());let e=request_at(&test_agent(),&l,&url).unwrap_err();assert!(e.0.contains("302"));task.join().unwrap();
-        let mut v=payload();v.as_object_mut().unwrap().remove("userInfo");let(url,task)=server("200 OK","",v.to_string().into_bytes());assert!(request_at(&test_agent(),&l,&url).unwrap_err().0.contains("用户标识"));task.join().unwrap();
+        let mut v=payload();v.as_object_mut().unwrap().remove("userInfo");let(url,task)=server("200 OK","",v.to_string().into_bytes());assert!(request_at(&test_agent(),&l,&url).unwrap_err().0.contains("user ID"));task.join().unwrap();
     }
     #[test]fn decompressed_responses_are_limited_to_one_mebibyte(){
         use std::io::Write;let l=login(&json!({"accessToken":"synthetic"})).unwrap();let mut body=payload().to_string().into_bytes();body.resize(1024*1024+1,b' ');
-        for gzip in [false,true]{let headers=if gzip{"Content-Encoding: gzip\r\n"}else{""};let bytes=if gzip{let mut e=flate2::write::GzEncoder::new(Vec::new(),flate2::Compression::fast());e.write_all(&body).unwrap();e.finish().unwrap()}else{body.clone()};let(url,task)=server("200 OK",headers,bytes);assert!(request_at(&test_agent(),&l,&url).unwrap_err().0.contains("过大"));task.join().unwrap();}
+        for gzip in [false,true]{let headers=if gzip{"Content-Encoding: gzip\r\n"}else{""};let bytes=if gzip{let mut e=flate2::write::GzEncoder::new(Vec::new(),flate2::Compression::fast());e.write_all(&body).unwrap();e.finish().unwrap()}else{body.clone()};let(url,task)=server("200 OK",headers,bytes);assert!(request_at(&test_agent(),&l,&url).unwrap_err().0.contains("too large"));task.join().unwrap();}
     }
     #[test]
     #[ignore="按需只读核验本机 Kiro 额度，不保存配置"]

@@ -163,21 +163,21 @@ mod tests {
     #[test]
     fn shift_changes_between_chinese_and_english_without_changing_the_input_method(){
         let mut monitor=Monitor::new(Some(chinese(Some(true))));
-        assert_eq!(monitor.observe(Some(chinese(Some(false))),true),Some("英语"));
-        assert_eq!(monitor.observe(Some(chinese(Some(true))),true),Some("中文"));
+        assert_eq!(monitor.observe(Some(chinese(Some(false))),true),Some("English"));
+        assert_eq!(monitor.observe(Some(chinese(Some(true))),true),Some("Chinese"));
         assert_eq!(monitor.observe(Some(chinese(Some(true))),true),None);
     }
     #[test]
     fn ctrl_shift_detects_two_layouts_with_the_same_language_id(){
         let mut monitor=Monitor::new(Some(chinese(Some(true))));
         let next=State{layout:0xe0220804,..chinese(Some(true))};
-        assert_eq!(monitor.observe(Some(next),true),Some("中文"));
+        assert_eq!(monitor.observe(Some(next),true),Some("Chinese"));
         assert_eq!(monitor.observe(Some(next),true),None);
     }
     #[test]
     fn ctrl_shift_detects_tsf_profile_changes_even_when_the_layout_is_unchanged(){
         let mut monitor=Monitor::new(Some(chinese(Some(true))));
-        assert_eq!(monitor.observe(Some(State{profile:Some((3,4)),..chinese(Some(true))}),true),Some("中文"));
+        assert_eq!(monitor.observe(Some(State{profile:Some((3,4)),..chinese(Some(true))}),true),Some("Chinese"));
     }
     #[test]
     fn unreadable_samples_and_ordinary_keys_do_not_create_a_language_notice(){
@@ -186,19 +186,19 @@ mod tests {
         assert_eq!(monitor.observe(None,true),None);
         assert_eq!(monitor.observe(Some(State::default()),true),None);
         assert_eq!(monitor.observe(Some(chinese(None)),true),None);
-        assert_eq!(monitor.observe(Some(chinese(Some(false))),true),Some("英语"));
+        assert_eq!(monitor.observe(Some(chinese(Some(false))),true),Some("English"));
         for _ in 0..5{assert_eq!(monitor.observe(Some(chinese(Some(false))),true),None);}
     }
     #[test]
     fn switching_to_an_english_keyboard_reports_english(){
         let mut monitor=Monitor::new(Some(chinese(Some(true))));
-        assert_eq!(monitor.observe(Some(State{context:(1,11),layout:0x04090409,profile:None,native:None}),true),Some("英语"));
+        assert_eq!(monitor.observe(Some(State{context:(1,11),layout:0x04090409,profile:None,native:None}),true),Some("English"));
     }
     #[test]
     fn temporary_profile_read_failures_do_not_hide_the_next_profile_switch(){
         let mut monitor=Monitor::new(Some(chinese(Some(true))));
         assert_eq!(monitor.observe(Some(State{profile:None,..chinese(Some(true))}),true),None);
-        assert_eq!(monitor.observe(Some(State{profile:Some((3,4)),..chinese(Some(true))}),true),Some("中文"));
+        assert_eq!(monitor.observe(Some(State{profile:Some((3,4)),..chinese(Some(true))}),true),Some("Chinese"));
     }
     #[test]
     fn changing_app_windows_synchronizes_their_modes_without_notifying(){
@@ -217,8 +217,8 @@ mod tests {
         let restored=State{native:Some(false),profile:Some((3,4)),..window};
         assert_eq!(monitor.observe(Some(restored),false),None,"窗口激活后异步恢复的输入状态不应弹提示");
         for _ in 0..8{assert_eq!(monitor.observe(Some(restored),false),None);}
-        assert_eq!(monitor.observe(Some(State{native:Some(true),..restored}),true),Some("中文"),"窗口稳定后仍应识别 Shift 切换");
-        assert_eq!(monitor.observe(Some(State{native:Some(true),profile:Some((5,6)),..restored}),true),Some("中文"),"仍应识别 Ctrl+Shift 切换输入法");
+        assert_eq!(monitor.observe(Some(State{native:Some(true),..restored}),true),Some("Chinese"),"窗口稳定后仍应识别 Shift 切换");
+        assert_eq!(monitor.observe(Some(State{native:Some(true),profile:Some((5,6)),..restored}),true),Some("Chinese"),"仍应识别 Ctrl+Shift 切换输入法");
     }
     #[test]
     fn changing_focused_controls_does_not_reuse_another_controls_mode(){
@@ -246,7 +246,7 @@ mod tests {
         keys.key(0xa0,true,context,now);
         assert_eq!(monitor.observe(Some(chinese(Some(true))),keys.allows(context,now)),None,"只按按键、输入状态未变时不提示");
         keys.key(0xa0,false,context,now);
-        assert_eq!(monitor.observe(Some(chinese(Some(false))),keys.allows(context,now)),Some("英语"));
+        assert_eq!(monitor.observe(Some(chinese(Some(false))),keys.allows(context,now)),Some("English"));
         keys.clear();
         keys.key(0xa0,false,context,now);
         assert_eq!(monitor.observe(Some(chinese(Some(true))),keys.allows(context,now)),None,"一个切换动作只能用于一次提示");

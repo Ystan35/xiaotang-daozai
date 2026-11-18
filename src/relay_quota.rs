@@ -313,28 +313,28 @@ mod tests {
             assert!(request.starts_with("GET /api/usage/token/ HTTP/1.1\r\n"));
             assert!(request.to_ascii_lowercase().contains("authorization: bearer synthetic-wire-key\r\n"));
             assert!(!error.contains("sk-sensitive")&&!error.contains("synthetic-wire"));
-            if status==429{assert_eq!(wait,180);}if status==302{assert!(error.contains("重定向"));}
+            if status==429{assert_eq!(wait,180);}if status==302{assert!(error.contains("redirect"));}
         }
     }
     #[test]
     fn oversized_and_slow_responses_are_bounded(){
         let agent=ureq::AgentBuilder::new().try_proxy_from_env(false).redirects(0).timeout(std::time::Duration::from_millis(150)).build();
         let mut response=format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",1024*1024+1).into_bytes();response.resize(response.len()+1024*1024+1,b' ');
-        let (url,worker)=serve_once(response,std::time::Duration::ZERO);let error=get(&agent,&url,"synthetic").unwrap_err().0;worker.join().unwrap();assert!(error.contains("过大"));
+        let (url,worker)=serve_once(response,std::time::Duration::ZERO);let error=get(&agent,&url,"synthetic").unwrap_err().0;worker.join().unwrap();assert!(error.contains("too large"));
         let (url,worker)=serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec(),std::time::Duration::from_millis(350));
         assert!(get(&agent,&url,"synthetic").is_err());worker.join().unwrap();
     }
     #[test] fn cancelled_validation_makes_no_request(){
         let agent=ureq::AgentBuilder::new().redirects(0).build();
-        assert_eq!(request_cancellable(&agent,Kind::OneApi,"https://must-not-resolve.invalid","synthetic",||true).unwrap_err().0,"已取消连接");
+        assert_eq!(request_cancellable(&agent,Kind::OneApi,"https://must-not-resolve.invalid","synthetic",||true).unwrap_err().0,"Connection cancelled");
     }
     #[test] fn persisted_prefix_is_not_normalized_again(){
         let base=normalize_base_url("https://relay.example/v1/v1").unwrap();assert_eq!(base,"https://relay.example/v1/v1");
         assert_eq!(validate_base_url(&base).unwrap(),base);
     }
     #[test] fn compact_names_the_exhausted_limiting_window(){
-        let q=Quota{source:"Sub2API".into(),expires_at:None,amounts:vec![amount("每日","USD",Some(10.0),Some(10.0),Some(0.0),false,Scope::Subscription),amount("每周","USD",Some(0.0),Some(20.0),Some(20.0),false,Scope::Subscription)]};
-        assert_eq!(q.compact(),"每周剩余 0%");
+        let q=Quota{source:"Sub2API".into(),expires_at:None,amounts:vec![amount("Daily","USD",Some(10.0),Some(10.0),Some(0.0),false,Scope::Subscription),amount("Weekly","USD",Some(0.0),Some(20.0),Some(20.0),false,Scope::Subscription)]};
+        assert_eq!(q.compact(),"Weekly 0% left");
     }
     #[test] fn bases_are_https_and_never_contain_credentials_or_parameters(){
         for bad in ["http://example.com","http://localhost:8080","https://u:p@example.com","https://example.com?key=secret","https://example.com/#secret","file:///tmp/a","https://example.com\\evil","https://exa mple.com"] {assert!(normalize_base_url(bad).is_err(),"{bad}");}
@@ -348,15 +348,15 @@ mod tests {
         let mut paths=vec![];let mut value=new_fixture();value["data"]["user_quota"]=json!({"total_available":12,"total_used":8});
         let (kind,snapshot)=detect_with(|path,timeout|{assert!(timeout<=PROBE_TIMEOUT);paths.push(path.to_owned());Ok(value.clone())},||false,AUTO_TIMEOUT).unwrap();
         assert_eq!(kind,Kind::NewApi);assert_eq!(paths,["/api/usage/token/"]);
-        let q=snapshot.relay.unwrap();assert_eq!(q.amounts[0].label,"令牌额度");assert_eq!(q.amounts[0].remaining,Some(250000.0));
-        assert_eq!(q.amounts[1].label,"账户额度");assert_eq!(q.amounts[1].remaining,Some(12.0));assert!(q.amounts.iter().all(|a|a.unit=="站点配额"));
+        let q=snapshot.relay.unwrap();assert_eq!(q.amounts[0].label,"Token quota");assert_eq!(q.amounts[0].remaining,Some(250000.0));
+        assert_eq!(q.amounts[1].label,"Account quota");assert_eq!(q.amounts[1].remaining,Some(12.0));assert!(q.amounts.iter().all(|a|a.unit=="Site quota"));
     }
     #[test]
     fn auto_falls_back_to_sub2api_before_compatible_billing(){
         let mut paths=vec![];
         let (kind,snapshot)=detect_with(|path,_|{paths.push(path.to_owned());if path=="/v1/usage"{Ok(json!({"isValid":true,"mode":"unrestricted","unit":"USD","balance":7}))}else{Err(unsupported())}},||false,AUTO_TIMEOUT).unwrap();
         assert_eq!(kind,Kind::Sub2Api);assert_eq!(paths,["/api/usage/token/","/v1/usage"]);
-        let q=snapshot.relay.unwrap();assert_eq!(q.amounts[0].label,"账户余额");assert_eq!(q.compact(),"7 USD");assert!(snapshot.windows.is_empty());
+        let q=snapshot.relay.unwrap();assert_eq!(q.amounts[0].label,"Account balance");assert_eq!(q.compact(),"7 USD");assert!(snapshot.windows.is_empty());
     }
     #[test]
     fn auto_billing_uses_at_most_four_requests_and_does_not_invent_scope_or_currency(){
@@ -366,8 +366,8 @@ mod tests {
             "/dashboard/billing/usage"=>Ok(json!({"object":"list","total_usage":2500})),_=>Err(unsupported()),
         }},||false,AUTO_TIMEOUT).unwrap();
         assert_eq!(kind,Kind::OneApi);assert_eq!(paths.len(),MAX_PROBE_REQUESTS);
-        let q=snapshot.relay.unwrap();assert_eq!(q.source,"兼容计费接口");assert_eq!(q.amounts[0].remaining,Some(75.0));assert_eq!(q.amounts[0].unit,"站点单位");
-        assert!(q.full().contains("余额暂不可查询"));assert!(!q.full().contains("USD")&&!q.full().contains('$'));
+        let q=snapshot.relay.unwrap();assert_eq!(q.source,"Compatible billing API");assert_eq!(q.amounts[0].remaining,Some(75.0));assert_eq!(q.amounts[0].unit,"site units");
+        assert!(q.full().contains("Balance not available"));assert!(!q.full().contains("USD")&&!q.full().contains('$'));
     }
     #[test]
     fn auto_stops_on_broken_recognized_quota_instead_of_accepting_a_different_balance(){
@@ -379,28 +379,28 @@ mod tests {
     #[test]
     fn auto_does_not_accept_conflicting_currency_or_missing_billing_usage(){
         let mut value=new_fixture();value["data"]["unit"]=json!("USD");
-        assert!(detect_with(|_,_|Ok(value.clone()),||false,AUTO_TIMEOUT).unwrap_err().0.contains("单位"));
+        assert!(detect_with(|_,_|Ok(value.clone()),||false,AUTO_TIMEOUT).unwrap_err().0.contains("unit"));
         for value in [json!({"isValid":true,"mode":"quota_limited","quota":{"unit":"CNY","limit":10,"used":1,"remaining":9}}),json!({"isValid":true,"mode":"quota_limited","rate_limits":[{"window":"1d","unit":"requests","limit":10,"used":1,"remaining":9}]})] {
             let mut calls=0;let error=detect_with(|path,_|{calls+=1;if path=="/v1/usage"{Ok(value.clone())}else{Err(unsupported())}},||false,AUTO_TIMEOUT).unwrap_err().0;
-            assert!(error.contains("单位"));assert_eq!(calls,2);
+            assert!(error.contains("unit"));assert_eq!(calls,2);
         }
         let error=detect_with(|path,_|if path.ends_with("subscription"){Ok(json!({"object":"billing_subscription","hard_limit_usd":10}))}else{Err(unsupported())},||false,AUTO_TIMEOUT).unwrap_err().0;
-        assert!(error.contains("不完整"));
+        assert!(error.contains("incomplete"));
     }
     #[test]
     fn auto_unknown_shapes_never_become_zero_balances(){
         let mut calls=0;let error=detect_with(|_,_|{calls+=1;Ok(json!({"balance":0}))},||false,AUTO_TIMEOUT).unwrap_err().0;
-        assert_eq!(calls,3);assert!(error.contains("高级设置"));
+        assert_eq!(calls,3);assert!(error.contains("Advanced"));
         let mut value=new_fixture();value["data"]["unlimited_quota"]=json!(true);
         let (_,snapshot)=detect_with(|_,_|Ok(value.clone()),||false,AUTO_TIMEOUT).unwrap();assert_eq!(snapshot.relay.unwrap().amounts[0].remaining,None);
     }
     #[test]
     fn auto_budget_and_cancellation_stop_further_requests_and_reject_late_success(){
         let mut calls=0;assert!(detect_with(|_,_|{calls+=1;Ok(new_fixture())},||true,AUTO_TIMEOUT).is_err());assert_eq!(calls,0);
-        let error=detect_with(|_,_|{calls+=1;Ok(new_fixture())},||false,Duration::ZERO).unwrap_err().0;assert!(error.contains("超时"));assert_eq!(calls,0);
+        let error=detect_with(|_,_|{calls+=1;Ok(new_fixture())},||false,Duration::ZERO).unwrap_err().0;assert!(error.contains("timed out"));assert_eq!(calls,0);
         let cancelled=std::cell::Cell::new(false);
         assert!(detect_with(|_,_|{calls+=1;cancelled.set(true);Err(unsupported())},||cancelled.get(),AUTO_TIMEOUT).is_err());assert_eq!(calls,1);
-        let error=detect_with(|_,timeout|{assert!(timeout<=Duration::from_millis(20));std::thread::sleep(Duration::from_millis(40));Ok(new_fixture())},||false,Duration::from_millis(20)).unwrap_err().0;assert!(error.contains("超时"));
+        let error=detect_with(|_,timeout|{assert!(timeout<=Duration::from_millis(20));std::thread::sleep(Duration::from_millis(40));Ok(new_fixture())},||false,Duration::from_millis(20)).unwrap_err().0;assert!(error.contains("timed out"));
     }
     #[test]
     fn auto_http_auth_rate_limit_redirect_and_server_errors_do_not_probe_other_routes(){
@@ -436,7 +436,7 @@ mod tests {
     }
     #[test] fn new_api_preserves_units_and_expiry_is_not_reset(){
         let s=parse_new_api(&new_fixture()).unwrap();assert_eq!(s.windows[0].remaining,50.0);assert_eq!(s.windows[0].reset,None);
-        let q=s.relay.unwrap();assert_eq!(q.amounts[0].unit,"站点配额");assert!(!q.full().contains('$'));assert_eq!(q.expires_at,Some(1900000000));
+        let q=s.relay.unwrap();assert_eq!(q.amounts[0].unit,"Site quota");assert!(!q.full().contains('$'));assert_eq!(q.expires_at,Some(1900000000));
     }
     #[test] fn missing_zero_and_unlimited_are_distinct(){
         let mut v=new_fixture();v["data"]["total_available"]=Value::Null;assert!(parse_new_api(&v).is_err());
@@ -446,7 +446,7 @@ mod tests {
     }
     #[test] fn one_api_has_configurable_units_and_cent_scaled_usage(){
         let sub=json!({"object":"billing_subscription","hard_limit_usd":100});let usage=json!({"object":"list","total_usage":2500});
-        let s=parse_one_api(&sub,&usage).unwrap();assert_eq!(s.windows[0].remaining,75.0);let q=s.relay.unwrap();assert_eq!(q.amounts[0].remaining,Some(75.0));assert_eq!(q.amounts[0].unit,"站点单位");
+        let s=parse_one_api(&sub,&usage).unwrap();assert_eq!(s.windows[0].remaining,75.0);let q=s.relay.unwrap();assert_eq!(q.amounts[0].remaining,Some(75.0));assert_eq!(q.amounts[0].unit,"site units");
         let mut sentinel=sub.clone();sentinel["hard_limit_usd"]=json!(100000000);let s=parse_one_api(&sentinel,&usage).unwrap();assert!(s.windows.is_empty());assert_eq!(s.relay.unwrap().amounts[0].remaining,None);
         assert!(parse_one_api(&sub,&json!({"object":"list"})).is_err());assert!(parse_one_api(&json!({"error":{"message":"secret"}}),&usage).is_err());
     }
@@ -478,41 +478,41 @@ mod tests {
     #[test] fn quota_cache_roundtrip_preserves_unknown_and_unlimited(){
         let mut v=new_fixture();v["data"]["unlimited_quota"]=json!(true);
         let q=parse_new_api(&v).unwrap().relay.unwrap();let raw=serde_json::to_string(&q).unwrap();
-        let restored:Quota=serde_json::from_str(&raw).unwrap();assert_eq!(restored.amounts[0].remaining,None);assert!(restored.amounts[0].unlimited);assert_eq!(restored.compact(),"余额暂不可查询");
+        let restored:Quota=serde_json::from_str(&raw).unwrap();assert_eq!(restored.amounts[0].remaining,None);assert!(restored.amounts[0].unlimited);assert_eq!(restored.compact(),"Balance not available");
     }
     #[test] fn balance_display_does_not_substitute_key_budgets_for_wallets(){
         for value in [false,true]{
             let mut v=new_fixture();v["data"]["unlimited_quota"]=json!(value);
             let q=parse_new_api(&v).unwrap().relay.unwrap();
-            assert_eq!(q.compact(),"余额暂不可查询");
-            assert!(!q.full().contains("令牌额度")&&!q.full().contains("不限额"));
+            assert_eq!(q.compact(),"Balance not available");
+            assert!(!q.full().contains("Token quota")&&!q.full().contains("不限额"));
         }
         let q=parse_sub2api(&json!({"mode":"quota_limited","isValid":true,"quota":{"limit":10,"used":2,"remaining":8,"unit":"USD"},"rate_limits":[{"window":"7d","limit":20,"used":20,"remaining":0}]})).unwrap().relay.unwrap();
-        assert_eq!(q.compact(),"余额暂不可查询");assert!(!q.full().contains("API Key 总额度"));
+        assert_eq!(q.compact(),"Balance not available");assert!(!q.full().contains("API key total"));
         let q=parse_one_api(&json!({"object":"billing_subscription","hard_limit_usd":100}),&json!({"object":"list","total_usage":2500})).unwrap().relay.unwrap();
-        assert_eq!(q.compact(),"余额暂不可查询");
+        assert_eq!(q.compact(),"Balance not available");
     }
     #[test] fn balance_display_prefers_account_data_and_keeps_zero_balances(){
         for remaining in [0,500000]{
             let mut v=new_fixture();v["data"]["total_available"]=json!(1);v["data"]["user_quota"]=json!({"total_available":remaining,"total_used":8});
             let q=parse_new_api(&v).unwrap().relay.unwrap();
-            assert_eq!(q.compact(),format!("{remaining} 站点配额"));
-            assert!(q.full().contains("账户额度"));assert!(!q.full().contains("令牌额度"));
+            assert_eq!(q.compact(),format!("{remaining} Site quota"));
+            assert!(q.full().contains("Account quota"));assert!(!q.full().contains("Token quota"));
         }
     }
     #[test] fn balance_display_subscription_uses_remaining_percentages(){
         let q=parse_sub2api(&json!({"mode":"unrestricted","isValid":true,"unit":"USD","remaining":3,"subscription":{"daily_limit_usd":10,"daily_usage_usd":7,"weekly_limit_usd":100,"weekly_usage_usd":60}})).unwrap().relay.unwrap();
-        assert_eq!(q.compact(),"每日剩余 30%");assert!(q.full().contains("剩余 30%"));
+        assert_eq!(q.compact(),"Daily 30% left");assert!(q.full().contains("30% left"));
         let q=parse_sub2api(&json!({"mode":"unrestricted","isValid":true,"unit":"USD","remaining":-1,"subscription":{"daily_limit_usd":null}})).unwrap().relay.unwrap();
-        assert_eq!(q.compact(),"额度暂不可查询");assert!(!q.full().contains("不限额"));
+        assert_eq!(q.compact(),"Quota not available");assert!(!q.full().contains("不限额"));
     }
     #[test] fn balance_display_legacy_cache_does_not_restore_key_limits(){
-        let q:Quota=serde_json::from_value(json!({"source":"Sub2API","amounts":[{"label":"每日","unit":"USD","remaining":20,"limit":100,"used":80,"unlimited":false}],"expires_at":null})).unwrap();
-        assert_eq!(q.compact(),"余额暂不可查询");assert!(!q.full().contains("20"));
+        let q:Quota=serde_json::from_value(json!({"source":"Sub2API","amounts":[{"label":"Daily","unit":"USD","remaining":20,"limit":100,"used":80,"unlimited":false}],"expires_at":null})).unwrap();
+        assert_eq!(q.compact(),"Balance not available");assert!(!q.full().contains("20"));
     }
     #[test] fn untrusted_errors_and_nonfinite_numbers_are_not_exposed(){
         let v=json!({"code":false,"message":"sk-secret https://private.example"});let error=parse_new_api(&v).unwrap_err();assert!(!error.contains("secret"));assert!(!error.contains("private"));
         let mut v=new_fixture();v["data"]["total_used"]=json!("NaN");assert!(parse_new_api(&v).is_err());
-        assert_eq!(response_error(429).1,180);assert!(response_error(302).0.contains("重定向"));
+        assert_eq!(response_error(429).1,180);assert!(response_error(302).0.contains("redirect"));
     }
 }

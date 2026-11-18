@@ -123,6 +123,6 @@ mod tests {
         let mut picker=ReminderPicker::new(None);picker.adjust(0,-10000);
         assert_eq!(picker.selected().date(),Local::now().date_naive());
         let due=picker.due();picker.adjust(0,i64::MAX);assert_eq!(picker.due(),due);
-        assert_eq!(picker.label(0,picker.positions[0]),"今天");
+        assert_eq!(picker.label(0,picker.positions[0]),"Today");
     }
 }

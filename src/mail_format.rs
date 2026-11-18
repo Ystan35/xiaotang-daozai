@@ -497,7 +497,7 @@ mod tests {
         let html = r#"<p>订单截图如下：<img src="order.png" alt="订单截图"></p>
             <p><img src="logo.png" alt="logo"><img src="pixel.gif" alt=""></p>"#;
         let out = lines(html, "");
-        assert!(out.iter().any(|l| l.text == "订单截图如下：[图片：订单截图]"), "{out:?}");
+        assert!(out.iter().any(|l| l.text == "订单截图如下：[Image: 订单截图]"), "{out:?}");
         assert!(!out.iter().any(|l| l.text.to_ascii_lowercase().contains("logo")), "装饰图不该留下噪音：{out:?}");
     }
 

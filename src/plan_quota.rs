@@ -188,13 +188,13 @@ mod tests {
     #[test] fn glm_business_errors_are_specific_without_echoing_private_messages(){
         for provider in [PlanProvider::GlmChina,PlanProvider::GlmGlobal]{
             for (code,message,expected) in [
-                (401,"token expired or incorrect synthetic-secret","密钥"),
-                (1003,"synthetic-secret","已过期"),
-                (1220,"synthetic-secret","权限"),
-                (1309,"synthetic-secret","套餐已到期"),
-                (1315,"synthetic-secret","套餐 Key"),
-                (1302,"synthetic-secret","频繁"),
-                (500,"用户不存在coding plan synthetic-secret","未查询到有效"),
+                (401,"token expired or incorrect synthetic-secret","key"),
+                (1003,"synthetic-secret","expired"),
+                (1220,"synthetic-secret","permission"),
+                (1309,"synthetic-secret","plan expired"),
+                (1315,"synthetic-secret","Coding Plan key"),
+                (1302,"synthetic-secret","Too many"),
+                (500,"用户不存在coding plan synthetic-secret","No active"),
                 (5555,"synthetic-secret https://private.invalid","5555"),
             ]{
                 let error=parse(provider,&json!({"success":false,"code":code,"msg":message})).unwrap_err();
@@ -205,10 +205,10 @@ mod tests {
     }
     #[test] fn glm_http_and_business_errors_preserve_their_meaning_and_retry_delay(){
         for (status,body,expected,delay) in [
-            (429,r#"{"error":{"code":"1309","message":"synthetic-secret"}}"#,"套餐已到期",60),
-            (401,r#"{"error":{"code":"1003","message":"synthetic-secret"}}"#,"已过期",0),
-            (200,r#"{"success":false,"code":1302,"msg":"synthetic-secret"}"#,"频繁",180),
-            (429,"<html>synthetic-secret</html>","频繁",180),
+            (429,r#"{"error":{"code":"1309","message":"synthetic-secret"}}"#,"plan expired",60),
+            (401,r#"{"error":{"code":"1003","message":"synthetic-secret"}}"#,"expired",0),
+            (200,r#"{"success":false,"code":1302,"msg":"synthetic-secret"}"#,"Too many",180),
+            (429,"<html>synthetic-secret</html>","Too many",180),
             (503,"<html>synthetic-secret</html>","503",30),
         ]{
             let count=std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));let calls=count.clone();
@@ -261,7 +261,7 @@ mod tests {
     }
     #[test] fn opencode_unknown_rolling_cadence_preserves_primary_order() {
         let s = parse(PlanProvider::OpenCodeGo, &json!({"usage":{"rolling":{"percent":10},"weekly":{"percent":20},"monthly":{"percent":30}}})).unwrap();
-        assert_eq!(s.rings().iter().map(|w| w.label.as_str()).collect::<Vec<_>>(), vec!["滚动", "本周"]);
+        assert_eq!(s.rings().iter().map(|w| w.label.as_str()).collect::<Vec<_>>(), vec!["Rolling", "This week"]);
         assert!(s.windows.iter().all(|w| w.seconds.is_none()));
     }
     #[test] fn glm_tools_only_cannot_connect_as_blank_coding_account() {

@@ -329,9 +329,9 @@ pub fn parse_paste(text: &str) -> Option<(String, String)> {
         .replace('：', ":")
         .replace('＝', "=");
     let lower = flat.to_ascii_lowercase();
-    let user_labels = ["Username", "帐号", "账号", "Mail", "账户", "username", "user name", "account", "email", "login"];
-    let pass_labels = ["Password", "口令", "password", "pass word", "pwd", "pass"];
-    let skip_labels = ["服务器地址", "Server", "地址", "server", "url"];
+    let user_labels = ["用户名", "帐号", "账号", "邮箱", "账户", "username", "user name", "account", "email", "login"];
+    let pass_labels = ["密码", "口令", "password", "pass word", "pwd", "pass"];
+    let skip_labels = ["服务器地址", "服务器", "地址", "server", "url"];
 
     let mut marks: Vec<(usize, usize, u8)> = Vec::new(); // (start, end, 0=user 1=pass 2=skip)
     for (kind, labels) in [(0u8, &user_labels[..]), (1u8, &pass_labels[..]), (2u8, &skip_labels[..])] {
@@ -1341,7 +1341,7 @@ mod tests {
                     assert_eq!(error.status,Some(code),"well_known={well_known} redirect={redirect} paths={paths:?}");
                     let expected=if well_known {vec!["/","/.well-known/caldav","/account/"]} else {vec!["/","/account/"]};
                     assert_eq!(paths,expected,"实际日历服务失败后应保留错误");
-                    assert!(error.message.contains("查找日历"),"{}",error.message);
+                    assert!(error.message.contains("Finding calendars"),"{}",error.message);
                 }
             }
         }
@@ -1380,7 +1380,7 @@ mod tests {
             let error=fetch_month(&cfg,"synthetic-password",NaiveDate::from_ymd_opt(2026,11,1).unwrap()).err().unwrap();
             worker.join().unwrap();
             assert_eq!(error.status,Some(code));
-            assert!(error.message.contains(if code==401 {"验证账号失败"} else {"读取日程失败"}),"{}",error.message);
+            assert!(error.message.contains(if code==401 {"Sign-in failed"} else {"Reading events failed"}),"{}",error.message);
             assert!(error.message.contains(&code.to_string()),"{}",error.message);
         }
     }
@@ -1423,7 +1423,7 @@ mod tests {
             write!(stream,"HTTP/1.1 207 Multi-Status\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
         });
         let cfg=Config{provider:Provider::WeCom,username:"synthetic".into(),href:None,server:Some(base)};
-        assert!(discover(&agent(),&cfg,"synthetic-password").unwrap_err().message.contains("不可信"));
+        assert!(discover(&agent(),&cfg,"synthetic-password").unwrap_err().message.contains("untrusted"));
         worker.join().unwrap();foreign.set_nonblocking(true).unwrap();assert!(foreign.accept().is_err());
     }
 
@@ -1770,17 +1770,17 @@ mod tests {
 
     #[test]
     fn error_messages_are_human() {
-        assert_eq!(Failure::status(Provider::Feishu, 401).message, "验证账号失败（401），请核对用户名和飞书提供的专用密码");
-        assert_eq!(Failure::status(Provider::WeCom, 401).message, "验证账号失败（401），请核对用户名和企业微信提供的专用密码");
-        assert_eq!(Failure::status(Provider::Exchange, 401).message, "验证账号失败（401），请核对用户名和密码");
-        assert_eq!(Failure::status(Provider::Custom, 401).message, "验证账号失败（401），请核对用户名和密码");
+        assert_eq!(Failure::status(Provider::Feishu, 401).message, "Sign-in failed (401); check the username and the app password from Feishu");
+        assert_eq!(Failure::status(Provider::WeCom, 401).message, "Sign-in failed (401); check the username and the app password from WeCom");
+        assert_eq!(Failure::status(Provider::Exchange, 401).message, "Sign-in failed (401); check username and password");
+        assert_eq!(Failure::status(Provider::Custom, 401).message, "Sign-in failed (401); check username and password");
         for provider in Provider::ALL {assert_eq!(Provider::parse(provider.key()),provider);}
         assert!(Provider::Exchange.exchange() && Provider::WeCom.exchange() && !Provider::Custom.exchange());
         assert!(Provider::Exchange.custom_server() && Provider::Exchange.server().is_empty());
         let saved=Config{provider:Provider::Exchange,username:"me@example.com".into(),href:None,server:Some("https://mail.example.com/".into())};
         assert_eq!(decode_config(&encode_config(&saved)).unwrap(),saved,"Exchange 账号的服务器地址要能保存和读回");
-        assert_eq!(Failure::transport("timed out").message, "连不上服务器，检查网络");
-        assert_eq!(Failure::status(Provider::DingTalk, 404).message, "服务器地址不对（404）");
+        assert_eq!(Failure::transport("timed out").message, "Can't reach the server; check the network");
+        assert_eq!(Failure::status(Provider::DingTalk, 404).message, "Wrong server URL (404)");
     }
 
     #[test]
