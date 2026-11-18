@@ -30,6 +30,8 @@ mod mail_reader;
 pub mod mail_manage;
 mod mail_manage_ui;
 pub mod clipboard;
+pub mod clipboard_image;
+mod clipboard_image_ui;
 pub mod side_dock;
 mod task_picker;
 pub mod model;

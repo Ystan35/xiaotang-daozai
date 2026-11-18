@@ -759,13 +759,14 @@ impl App {
         if !self.settings.clipboard_history {
             c.dashed(42.0, 32.0, 335.0, 91.0, 12.0, 1.2, Color32::from_gray(70), 0.0);
             c.text(209.5, 66.0, "剪贴板记录已关闭", 12.0, W::Semibold, theme::WHITE, H::Center);
-            c.text(209.5, 82.0, "开启后，最近复制的文字会出现在这里", size::TINY, W::Regular, theme::GRAY, H::Center);
+            c.text(209.5, 82.0, if self.settings.clipboard_images { "开启后，最近复制的文字和图片会出现在这里" } else { "开启后，最近复制的文字会出现在这里" }, size::TINY, W::Regular, theme::GRAY, H::Center);
             let (r, bc) = capsule(c, 179.5, 92.0, 60.0, 20.0, "clip-enable", theme::BTN, theme::BTN_HOVER);
             bc.centered_text(209.5, 102.0, "开启", size::SMALL, W::Semibold, theme::WHITE, H::Center);
             if r.clicked() { self.settings.clipboard_history = true; self.clipboard.set_enabled(true); self.settings.save(); }
             return;
         }
         let items = self.clipboard.lock().items.clone();
+        self.clip_thumbs.retain(|file, _| items.iter().any(|clip| clip.image.as_ref().is_some_and(|i| &i.file == file)));
         let n = items.len();
         let recent = items.iter().filter(|clip| !clip.pinned).count();
         self.clip_first = self.clip_first.min(n.saturating_sub(CLIP_ROWS));
@@ -797,7 +798,7 @@ impl App {
         if n == 0 {
             c.dashed(42.0, 32.0, 335.0, 91.0, 12.0, 1.2, Color32::from_gray(70), 0.0);
             paint::clipboard_glyph(c, 209.5, 58.0, 22.0, Color32::from_gray(200), Color32::from_gray(80));
-            c.text(209.5, 93.0, "复制的文字会出现在这里", 12.0, W::Semibold, theme::WHITE, H::Center);
+            c.text(209.5, 93.0, if self.settings.clipboard_images { "复制的文字和图片会出现在这里" } else { "复制的文字会出现在这里" }, 12.0, W::Semibold, theme::WHITE, H::Center);
             c.text(209.5, 108.0, "记录保存在本机，重新打开仍可查看", size::TINY, W::Regular, theme::GRAY, H::Center);
             return;
         }
@@ -811,7 +812,7 @@ impl App {
             c.fill(371.0, top, 2.5, track, 1.25, Color32::from_white_alpha(14));
             c.fill(371.0, y, 2.5, thumb, 1.25, Color32::from_white_alpha(70));
         }
-        let mut action: Option<(usize, u8)> = None; // 0 复制 1 固定 2 删除
+        let mut action: Option<(usize, u8)> = None; // 0 复制 1 固定 2 删除 3 识字
         for (row, (index, clip)) in items.iter().enumerate().skip(self.clip_first).take(CLIP_ROWS).enumerate() {
             let y = 44.0 + row as f32 * 22.5;
             let r = c.hit(48.0, y - 10.0, 323.0, 20.0, ("clip", index, clip.text.len(), clip.at.as_str()));
@@ -824,20 +825,40 @@ impl App {
             } else {
                 c.circle(58.0, y, 2.2, Color32::from_gray(110));
             }
-            let text = c.fit(&crate::clipboard::preview(&clip.text), size::BODY, W::Regular, 210.0);
-            c.text(68.0, y + 3.8, &text, size::BODY, W::Regular, Color32::from_gray(235), H::Left);
             c.text(318.0, y + 3.5, &clip.at, size::TINY, W::Regular, theme::DIM, H::Right);
-            let tip: String = clip.text.chars().take(400).collect();
-            let r = r.on_hover_text(format!("{tip}{}\n点击复制", if clip.text.chars().count() > 400 { "…" } else { "" }));
+            let r = if let Some(image) = &clip.image {
+                // 图片：缩略图 + 识别出的文字或尺寸 + 「识字」。
+                let tw = self.paint_clip_thumb(c, image, 68.0, y, 16.0, 40.0);
+                let (label, color) = if clip.text.is_empty() { (format!("图片 {}×{}", image.w, image.h), theme::GRAY) } else { (crate::clipboard::preview(&clip.text), Color32::from_gray(235)) };
+                let lx = 68.0 + tw + 6.0;
+                c.text(lx, y + 3.8, &c.fit(&label, size::BODY, W::Regular, 246.0 - lx), size::BODY, W::Regular, color, H::Left);
+                let pending = self.clip_ocr_pending(image);
+                let (ocr, bc) = capsule(c, 251.0, y - 8.0, 34.0, 16.0, &format!("clip-ocr-{index}"), theme::BTN, theme::BTN_HOVER);
+                bc.text(268.0, y + 3.5, if pending { "识别中" } else if clip.text.is_empty() { "识字" } else { "文字" }, size::TINY, W::Semibold, theme::WHITE, H::Center);
+                if ocr.on_hover_text(if clip.text.is_empty() { "识别图片里的文字并复制（在本机完成）" } else { "复制识别出的文字" }).clicked() && !pending { action = Some((index, 3)); }
+                let (image, text) = (image.clone(), clip.text.clone());
+                r.on_hover_ui(|ui| self.clip_image_tooltip(ui, &image, &text))
+            } else {
+                let text = c.fit(&crate::clipboard::preview(&clip.text), size::BODY, W::Regular, 210.0);
+                c.text(68.0, y + 3.8, &text, size::BODY, W::Regular, Color32::from_gray(235), H::Left);
+                let tip: String = clip.text.chars().take(400).collect();
+                r.on_hover_text(format!("{tip}{}\n点击复制", if clip.text.chars().count() > 400 { "…" } else { "" }))
+            };
             let pin = c.hit(323.0, y - 9.0, 18.0, 18.0, ("clip-pin", index)).on_hover_text(if clip.pinned { "取消固定" } else { "固定（清空时保留）" });
             paint::pin(c, 332.0, y, 9.0, if clip.pinned || pin.hovered() { theme::BLUE } else { theme::GRAY });
             let delete = c.hit(345.0, y - 9.0, 17.0, 18.0, ("clip-delete", index)).on_hover_text("删除这条记录");
             paint::close(c, 353.5, y, 2.4, theme::GRAY);
             if delete.clicked() { action = Some((index, 2)); }
             else if pin.clicked() { action = Some((index, 1)); }
-            else if r.clicked() { action = Some((index, 0)); }
+            else if r.clicked() && action.is_none() { action = Some((index, 0)); }
         }
         match action {
+            Some((index, 0)) if items[index].image.is_some() => {
+                if let Some(image) = &items[index].image { self.copy_clip_image(image); }
+            }
+            Some((index, 3)) => {
+                if let Some(image) = &items[index].image { self.recognize_clip_image(c.ui.ctx(), image, &items[index].text); }
+            }
             Some((index, 0)) => {
                 #[cfg(windows)]
                 self.say(if crate::clipboard::copy_history(&items[index].text) { "已复制" } else { "复制失败，请重试" });

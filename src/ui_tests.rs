@@ -8438,3 +8438,40 @@ fn claude_tracker_marks_adjusts_and_alerts_on_the_quota_page(){
     h.app.claude_tracker.enabled=false;for _ in 0..5{h.frame(vec![]);}
     assert!(!text(&h,"Claude 账号")&&text(&h,"还没有添加 AI 账号"));
 }
+
+#[test]
+fn clipboard_images_are_opt_in_and_rows_offer_text_recognition() {
+    let _g=ENV_LOCK.lock().unwrap_or_else(|e|e.into_inner());
+    let mut h=H::new();
+    assert!(!h.app.settings.clipboard_images,"记录图片默认关闭");
+    let img=crate::clipboard_image::Rgba{w:4,h:2,px:vec![90;4*2*4]};
+    h.app.clipboard.lock().items.clear();
+    h.frame(vec![]);
+    assert!(!h.app.clipboard.record_image(&img),"未开启时不记录图片");
+    h.app.settings.clipboard_images=true;
+    h.frame(vec![]);
+    assert!(h.app.clipboard.record_image(&img));
+    let file=h.app.clipboard.lock().items[0].image.clone().unwrap().file;
+    let dir=crate::model::config_dir().join(crate::clipboard_image::DIR);
+    assert!(dir.join(&file).exists());
+
+    h.app.show_page(3);h.app.shelf_tab=1;
+    h.hover(H::local(300.0,60.0),0.8);
+    let has=|h:&H,label:&str|h.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Text(t)if t.galley.text()==label));
+    assert!(has(&h,"图片 4×2"));
+    h.click_text("识字");
+    assert!(h.app.clip_ocr.is_some(),"点「识字」开始后台识别");
+    // 识别在后台线程进行；Linux 上直接返回不支持。
+    for _ in 0..200 { if h.app.clip_ocr.is_none(){break;} std::thread::sleep(std::time::Duration::from_millis(5)); h.hover(H::local(300.0,60.0),0.02); }
+    assert!(h.app.clip_ocr.is_none());
+    h.hover(H::local(300.0,60.0),0.3);
+    #[cfg(not(windows))]
+    assert!(has(&h,"文字识别仅支持 Windows"),"识别失败时提示原因");
+
+    h.app.clipboard.lock().set_image_text(&file,"识别 结果");
+    h.frame(vec![]);
+    assert!(has(&h,"识别 结果") && has(&h,"文字"),"识别过的图片显示文字，按钮改为复制文字");
+    h.app.clipboard.lock().clear_recent();
+    h.frame(vec![]);
+    assert!(h.app.clip_thumbs.is_empty(),"记录清空后缩略图缓存也释放");
+}

@@ -89,6 +89,8 @@ windows = { version = "0.58", features = [
   "Foundation",
   "Foundation_Collections",
   "Storage_Streams",
+  "Media_Ocr",
+  "Graphics_Imaging",
   "Win32_Media_Audio_Endpoints",
   "Win32_Media_Audio",
   "Win32_System_WinRT",

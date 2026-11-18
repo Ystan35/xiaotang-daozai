@@ -679,6 +679,10 @@ pub struct App {
     pub clipboard: crate::clipboard::Shared,
     pub(crate) clip_first: usize,
     pub(crate) clip_confirm_clear: Option<f64>,
+    /// 剪贴板图片缩略图，按文件名缓存；None 表示读取失败。
+    pub(crate) clip_thumbs: std::collections::HashMap<String, Option<egui::TextureHandle>>,
+    /// 正在识别文字的图片与结果通道。
+    pub(crate) clip_ocr: Option<(String, std::sync::mpsc::Receiver<Result<String, String>>)>,
 
     // 饮水
     pub(crate) water_ring: Spring,
@@ -863,6 +867,8 @@ impl App {
             clipboard: crate::clipboard::Shared::new(clipboard_on),
             clip_first: 0,
             clip_confirm_clear: None,
+            clip_thumbs: Default::default(),
+            clip_ocr: None,
             water_ring: Spring::new(0.0, 120.0, 0.9),
             water_ml: 0.0,
             water_view: 0,
@@ -3015,6 +3021,8 @@ impl App {
         if self.clipboard.is_enabled() != self.clipboard_active() {
             self.clipboard.set_enabled(self.clipboard_active());
         }
+        self.clipboard.set_images(self.settings.clipboard_images);
+        self.clipboard_ocr_tick();
         self.shelf_scroll.target = self.shelf_first as f32;
         self.shelf_scroll.step(dt);
         if let Some(at) = self.confirm_clear {

@@ -1655,7 +1655,9 @@ impl App {
                         settings_label(ui,"剪贴板");
                         settings_card(ui,|ui|{
                             setting_row(ui,"记录剪贴板","在置物架的「剪贴板」里查看最近复制的文字，点一下再次复制",&mut self.settings.clipboard_history);
-                            ui.label(egui::RichText::new(format!("本机保存最近 {} 条，重新打开后可继续使用。关闭记录会暂停收集，手动清空会保留固定条目。密码管理器标记为敏感的内容不会记录。",crate::clipboard::MAX_RECENT)).size(12.0).color(settings_color(ctx,Color32::from_gray(180),Color32::from_gray(75))));
+                            ui.separator();
+                            setting_row(ui,"记录图片","截图和复制的图片也记下来，可以再次复制，或点「识字」用 Windows 自带的文字识别取出文字",&mut self.settings.clipboard_images);
+                            ui.label(egui::RichText::new(format!("本机保存最近 {} 条，重新打开后可继续使用。关闭记录会暂停收集，手动清空会保留固定条目。密码管理器标记为敏感的内容不会记录。图片保存在岛仔配置目录的 clipboard-images 文件夹，删除记录时一起删除；文字识别在本机完成，不联网。",crate::clipboard::MAX_RECENT)).size(12.0).color(settings_color(ctx,Color32::from_gray(180),Color32::from_gray(75))));
                             ui.add_space(5.0);
                             if ui.add_sized([120.0,32.0],egui::Button::new("打开剪贴板")).clicked(){self.settings_open=false;self.shelf_tab=1;self.show_page(3);}
                         });
