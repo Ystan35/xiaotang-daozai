@@ -1,4 +1,4 @@
-//! Ask: short questions answered by Google Gemini (AI Studio API key).
+//! Ask: questions answered by Google Gemini (AI Studio API key).
 //! The key lives in Windows Credential Manager; history is a small JSON file
 //! that prunes itself after the configured number of days.
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const MODELS: [(&str, &str); 2] = [("gemini-flash-latest", "Flash"), ("gemini-flash-lite-latest", "Flash-Lite")];
 pub const KEEP_DAYS: [u32; 4] = [0, 1, 3, 7];
 pub const KEY_URL: &str = "https://aistudio.google.com/apikey";
-const SYSTEM: &str = "You are a quick-answer assistant inside a small desktop widget. Answer in at most 3 short sentences or a short list. Plain text only, no markdown headings or tables.";
-const CONTEXT_TURNS: usize = 4;
+const SYSTEM: &str = "You are a helpful assistant inside a desktop widget. Give complete, accurate answers: as long as the question needs, but no padding. Use short paragraphs or bullet lists where they help. Plain text only: no markdown headings, tables or bold.";
+const CONTEXT_TURNS: usize = 8;
+/// Thinking models spend part of this budget before they write, so keep it generous.
+const MAX_OUTPUT_TOKENS: u32 = 8192;
 const MAX_HISTORY: usize = 200;
 
 pub fn now_secs() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }
@@ -149,7 +151,7 @@ pub fn request_body(context: &[(String, String)], question: &str, image: Option<
     serde_json::json!({
         "systemInstruction": {"parts":[{"text":SYSTEM}]},
         "contents": contents,
-        "generationConfig": {"maxOutputTokens": 600, "temperature": 0.6}
+        "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS, "temperature": 0.6}
     })
 }
 
@@ -164,6 +166,7 @@ pub fn parse_answer(body: &serde_json::Value) -> Result<String, String> {
         let finish = body.pointer("/candidates/0/finishReason").and_then(|v| v.as_str()).unwrap_or("");
         return Err(if finish == "SAFETY" { "Gemini declined to answer (safety)".into() } else { "Gemini sent an empty answer".into() });
     }
+    if body.pointer("/candidates/0/finishReason").and_then(|v| v.as_str()) == Some("MAX_TOKENS") { return Ok(format!("{text}…\n\n(Answer cut off at the length limit. Ask \"continue\" for the rest.)")); }
     Ok(text)
 }
 
@@ -195,7 +198,7 @@ pub fn error_message(status: u16, body: &str) -> String {
 pub fn ask(model: &str, key: &str, context: &[(String, String)], question: &str, image: Option<&Image>) -> Result<String, String> {
     if cfg!(test) { return Err("Network is disabled in tests".into()); }
     let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent");
-    let agent = crate::quota::http_agent_long(std::time::Duration::from_secs(if image.is_some() { 75 } else { 45 }));
+    let agent = crate::quota::http_agent_long(std::time::Duration::from_secs(if image.is_some() { 120 } else { 90 }));
     let body = request_body(context, question, image);
     match agent.post(&url).set("x-goog-api-key", key).set("Content-Type", "application/json").send_string(&body.to_string()) {
         Ok(resp) => {
@@ -253,14 +256,23 @@ mod tests {
     }
 
     #[test]
+    fn long_answers_are_allowed_and_a_cut_off_answer_says_so() {
+        let body = request_body(&[], "explain", None);
+        assert!(body["generationConfig"]["maxOutputTokens"].as_u64().unwrap() >= 4096);
+        let cut = serde_json::json!({"candidates":[{"content":{"parts":[{"text":"Part one"}]},"finishReason":"MAX_TOKENS"}]});
+        let text = parse_answer(&cut).unwrap();
+        assert!(text.starts_with("Part one") && text.contains("continue"));
+    }
+
+    #[test]
     fn request_body_keeps_recent_context_and_system_prompt() {
-        let ctx: Vec<(String, String)> = (0..6).map(|i| (format!("q{i}"), format!("a{i}"))).collect();
+        let ctx: Vec<(String, String)> = (0..CONTEXT_TURNS + 2).map(|i| (format!("q{i}"), format!("a{i}"))).collect();
         let body = request_body(&ctx, "now?", None);
         let contents = body["contents"].as_array().unwrap();
         assert_eq!(contents.len(), CONTEXT_TURNS * 2 + 1);
         assert_eq!(contents[0]["parts"][0]["text"], "q2");
         assert_eq!(contents.last().unwrap()["parts"][0]["text"], "now?");
-        assert!(body["systemInstruction"]["parts"][0]["text"].as_str().unwrap().contains("short"));
+        assert!(body["systemInstruction"]["parts"][0]["text"].as_str().unwrap().contains("complete"));
     }
 
     #[test]

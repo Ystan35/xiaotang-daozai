@@ -460,16 +460,20 @@ impl eframe::App for Shell {
                 }
             }
             // A finished screen snip lands on the clipboard: attach it to Ask.
+            // The snipping tool may change the clipboard more than once (clear, then the picture),
+            // and the clipboard can be busy for a moment, so keep checking until a picture arrives.
             if let Some((sequence,at))=self.ask_snip {
-                if daozai::clipboard::sequence()!=sequence {
+                let now=daozai::clipboard::sequence();
+                let image=if now!=sequence {daozai::clipboard::read_image()} else {None};
+                if let Some(image)=image {
                     self.ask_snip=None;
-                    if let Some(image)=daozai::clipboard::read_image() {
-                        if self.app.ask_attach(&image) {
-                            if let Some(native)=&self.native {unsafe{let _=windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(native.hwnd());}}
-                        }
+                    if self.app.ask_snip_arrived(&image,ctx) {
+                        if let Some(native)=&self.native {unsafe{let _=windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(native.hwnd());}}
                     }
-                } else if at.elapsed()>Duration::from_secs(120) {self.ask_snip=None;}
-                else {ctx.request_repaint_after(Duration::from_millis(250));}
+                } else if at.elapsed()>Duration::from_secs(120) {
+                    self.ask_snip=None;
+                    self.app.say("No snip received");
+                } else {ctx.request_repaint_after(Duration::from_millis(200));}
             }
             if let Some(rx)=&self.incoming {
                 rx.taskbar_settings(&self.app.settings);

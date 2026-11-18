@@ -115,7 +115,19 @@ impl App {
     }
 
     /// Collapses the island so it isn't in the screen snip.
+    /// A finished screen snip: attach it, and send straight away if a question was typed before snipping.
+    pub fn ask_snip_arrived(&mut self, img: &crate::clipboard_image::Rgba, ctx: &egui::Context) -> bool {
+        if !self.ask_attach(img) { return false; }
+        let typed = self.ask.buf.trim().to_string();
+        if !typed.is_empty() && self.ask.pending.is_none() {
+            self.ask.buf.clear();
+            if !self.ask_submit(typed.clone(), Some(ctx.clone())) { self.ask.buf = typed; }
+        }
+        true
+    }
+
     pub fn ask_before_snip(&mut self) {
+        self.say("Drag over the area to ask about");
         self.close_keyboard_open();
         self.ask.release = true;
         self.ask.focused = false;
